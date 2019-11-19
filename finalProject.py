@@ -367,7 +367,6 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
 
     segment_7 = createSegment7( current_gripper_state, current_gripper_state, k )
-    
 
 
     current_gripper_state = segment_7[len(segment_7) - 1]
@@ -448,9 +447,9 @@ T_ce_grasp = np.array( [ [-1, 0, 0, 0],
    
 
 
-T_ce_standoff = np.array( [ [1, 0, 0, 0],
+T_ce_standoff = np.array( [ [-1, 0, 0, 0],
                            [0, 1, 0, 0],
-                           [0, 0, 1, 0.5],
+                           [0, 0, -1, 0.5],
                            [0, 0, 0, 1] ] )
 
 
