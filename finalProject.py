@@ -68,18 +68,33 @@ def process_array(myArray, gripper):
     return finalArray
 
 
-def createSegment1( T_se_initial, T_sc_initial, k ):
+def createSegment1( T_se_initial, T_sc_initial, T_ce_standoff, k ):
     
+
+    # Need to compute the desired orientation R
+    # R_se_at standoff = R_sc * R_ce
+    # Can I multiply the SE(3) matrices too?
+    # T_se_standoff = np.matmul(  T_ce_standoff.copy(), T_sc_initial.copy()) 
+    T_se_standoff = np.matmul(T_sc_initial.copy(), T_ce_standoff.copy() )
+    
+    #T_se_standoff = T_ce_standoff
+    # replace the offset 
+    #T_se_standoff[0][3] = T_sc_initial[0][3]
+    #T_se_standoff[1][3] = T_sc_initial[1][3]
+    #T_se_standoff[2][3] = T_sc_initial[1][3] + 0.5
+
     totalSeconds = 100
     N = float(totalSeconds) / float(k)
 
     X_start = T_se_initial.copy()
 
-    X_end = T_sc_initial.copy()
+    X_end = T_se_standoff.copy()
+    print(X_end)
+    # X_end = T_sc_initial.copy()
     # Add a few cms to the z coordinate 
     
     X_end = X_end.astype(float)
-    X_end[2][3] = X_end[2][3] + 0.5
+    # X_end[2][3] = X_end[2][3] + 0.5
     
 
     # The total time in seconds
@@ -97,14 +112,17 @@ def createSegment1( T_se_initial, T_sc_initial, k ):
     return path_states
 
 # This segment will 
-def createSegment2(T_se_initial, T_sc_initial, k ):
+def createSegment2(T_se_initial, T_sc_initial, T_ce_grasp, k ):
 
     totalSeconds = 100
     N = float(totalSeconds) / float(k)
+    
+    # T_ce_grasp_new = np.matmul(  T_ce_grasp.copy(), T_sc_initial.copy())
+    T_goal = np.matmul( T_sc_initial.copy(), T_ce_grasp.copy() )
 
     X_start = T_se_initial.copy()
 
-    X_end = T_sc_initial.copy()
+    X_end = T_goal.copy()
 
     # The total time in seconds
     Tf = totalSeconds
@@ -193,14 +211,17 @@ def createSegment4( current_state, standoff_state, k ):
     
     return path_states
 
-def createSegment5(  current_state, standoff_state, k):
+def createSegment5(  current_state, standoff_state, T_sc_final, k):
 
+    #  current_gripper_state, T_ce_standoff, T_sc_final, k )
     totalSeconds = 100
     N = float(totalSeconds) / float(k)
 
+    goal_state = np.matmul( standoff_state, T_sc_final )
+    
     X_start = current_state.copy()
 
-    X_end = standoff_state.copy()
+    X_end = goal_state.copy()
 
     # The total time in seconds
     Tf = totalSeconds
@@ -214,7 +235,11 @@ def createSegment5(  current_state, standoff_state, k):
 
     return path_states
 
-def createSegment6( current_state, goal_state, k ):
+def createSegment6( current_state, T_sc_final, T_ce_grasp, k ):
+
+    # createSegment6( current_gripper_state, T_sc_final, T_ce_grasp, k )
+    goal_state = np.matmul( T_sc_final, T_ce_grasp )
+
 
     totalSeconds = 100
     N = float(totalSeconds) / float(k)
@@ -235,6 +260,52 @@ def createSegment6( current_state, goal_state, k ):
 
     return path_states
 
+def createSegment7( current_state, goal_state, k ):
+    
+    totalSeconds = 100
+    N = float(totalSeconds) / float(k)
+
+    X_start = current_state.copy()
+
+    X_end = goal_state.copy()
+
+    # The total time in seconds
+    Tf = totalSeconds
+    # method describes cubic or quintic scaling
+    method = 5
+    # For testing, just compute the first segment
+    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+
+    # Take the 3-D array and put it into a 2-D form
+    path_states = process_array(path_states, 0)
+
+    return path_states
+
+# Move the end-effector from putting the block down
+# back to the standoff state
+def createSegment8( current_state, goal_state, k  ):
+    
+    totalSeconds = 100
+    N = float(totalSeconds) / float(k)
+
+    X_start = current_state.copy()
+
+    X_end = goal_state.copy()
+
+    # The total time in seconds
+    Tf = totalSeconds
+    # method describes cubic or quintic scaling
+    method = 5
+    # For testing, just compute the first segment
+    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+
+    # Take the 3-D array and put it into a 2-D form
+    path_states = process_array(path_states, 0)
+
+    return path_states
+
+
+
 
 # This method will generate the trajectory
 # The initial configuration of the end-effector in the reference trajectory: Tse,initial.
@@ -253,35 +324,56 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
 
     
     # Create the first segment of the path
-    segment_1 = createSegment1(T_se_initial, T_sc_initial, k)
+    segment_1 = createSegment1(T_se_initial, T_sc_initial, T_ce_standoff, k)
     
+
+
     current_gripper_state = segment_1[len(segment_1) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
     standoff_state_initial = current_gripper_state.copy()  
 
     # Create the second segment
-    segment_2 = createSegment2(current_gripper_state, T_sc_initial, k) 
+    segment_2 = createSegment2(current_gripper_state, T_sc_initial, T_ce_grasp, k) 
     
     current_gripper_state = segment_2[len(segment_2) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
-    
+   
+    # This just fully closes the gripper
     segment_3 = createSegment3(current_gripper_state, k)
+     
     
     # current_gripper_state is the same after the prior step
+    # Move the end-effector back to the standoff state
     segment_4 = createSegment4( current_gripper_state, standoff_state_initial, k )
     
     current_gripper_state = segment_4[len(segment_4) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
 
-    standoff_final = T_sc_final.copy()
-    standoff_final = standoff_final.astype(float)
-    standoff_final[2][3] = standoff_final[2][3] + 0.5
-    segment_5 = createSegment5( current_gripper_state, standoff_final, k )
+    # standoff_final = T_sc_final.copy()
+    # standoff_final = standoff_final.astype(float)
+    # standoff_final[2][3] = standoff_final[2][3] + 0.5
+    segment_5 = createSegment5( current_gripper_state, T_ce_standoff, T_sc_final, k )
     
 
     current_gripper_state = segment_5[len(segment_5) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
-    segment_6 = createSegment6( current_gripper_state, T_sc_final, k )
+    
+    # Want to keep the orientation the same  
+    # segment_6 = createSegment6( current_gripper_state, T_sc_final, k )
+    standoff_state_final = current_gripper_state.copy()
+    segment_6 = createSegment6( current_gripper_state, T_sc_final, T_ce_grasp, k )
+    
+    current_gripper_state = segment_6[len(segment_6) - 1]
+    current_gripper_state =  convertLinearToSE3(current_gripper_state)
+
+    segment_7 = createSegment7( current_gripper_state, current_gripper_state, k )
+    
+
+
+    current_gripper_state = segment_7[len(segment_7) - 1]
+    current_gripper_state =  convertLinearToSE3(current_gripper_state)
+    segment_8 = createSegment8( current_gripper_state, standoff_state_final, k )
+
 
     # Combine each segment
     # path_states = segment_1
@@ -290,6 +382,8 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     path_states = np.concatenate( (path_states, segment_4) )
     path_states = np.concatenate( (path_states, segment_5) )
     path_states = np.concatenate( (path_states, segment_6) )
+    path_states = np.concatenate( (path_states, segment_7) )
+    path_states = np.concatenate( (path_states, segment_8) )
 
 
     return path_states
@@ -333,26 +427,30 @@ T_se_initial = np.array( [ [0, 0, 1, 0],
                            [-1, 0, 0, 0.5],
                            [0, 0, 0, 1] ] )
 
-T_sc_initial = np.array( [ [0, 0, 1, 1],
+
+T_sc_initial = np.array( [ [1, 0, 0, 1],
                            [0, 1, 0, 0],
-                           [-1, 0, 0, 0],
+                           [0, 0, 1, 0],
                            [0, 0, 0, 1] ] )
 
-T_sc_final = np.array( [ [0, 0, 1, 0],
-                         [0, 1, 0, -1],
-                         [-1, 0, 0, 0],
+T_sc_final = np.array( [ [0, 1, 0, 0],
+                         [-1, 0, 0, -1],
+                         [0, 0, 1, 0],
                          [0, 0, 0, 1] ] )
 
 
-T_ce_grasp = np.array( [ [0, 0, 1, 0],
+
+
+T_ce_grasp = np.array( [ [-1, 0, 0, 0],
                          [0, 1, 0, 0],
-                         [-1, 0, 0, 0],
+                         [0, 0, -1, 0],
                          [0, 0, 0, 1] ] )
    
 
-T_ce_standoff = np.array( [ [0, 0, 1, 0],
+
+T_ce_standoff = np.array( [ [1, 0, 0, 0],
                            [0, 1, 0, 0],
-                           [-1, 0, 0, 0.5],
+                           [0, 0, 1, 0.5],
                            [0, 0, 0, 1] ] )
 
 
