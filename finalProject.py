@@ -68,6 +68,105 @@ def process_array(myArray, gripper):
     return finalArray
 
 
+def createSegment1( T_se_initial, T_sc_initial, k ):
+    
+    totalSeconds = 100
+    N = float(totalSeconds) / float(k)
+
+    X_start = T_se_initial.copy()
+
+    X_end = T_sc_initial.copy()
+    # Add a few cms to the z coordinate 
+    X_end[2][3] = X_end[2][3] + 0.5
+    
+    # The total time in seconds
+    Tf = totalSeconds
+    # method describes cubic or quintic scaling
+    method = 5
+    # For testing, just compute the first segment
+    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+    # Take the 3-D array and put it into a 2-D form
+    path_states = process_array(path_states, 0)
+    
+    return path_states
+
+# This segment will 
+def createSegment2(T_se_initial, T_sc_initial, k ):
+
+    totalSeconds = 100
+    N = float(totalSeconds) / float(k)
+
+    X_start = T_se_initial.copy()
+
+    X_end = T_sc_initial.copy()
+
+    # The total time in seconds
+    Tf = totalSeconds
+    # method describes cubic or quintic scaling
+    method = 5
+    # For testing, just compute the first segment
+    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+    # Take the 3-D array and put it into a 2-D form
+    path_states = process_array(path_states, 0)
+
+    return path_states
+
+# Take the linear array and construct the SE3 representation 
+def convertLinearToSE3(linearList):
+    
+    finalList = np.zeros( (4, 4) ) 
+    
+    # r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
+    finalList[0][0] = linearList[0]  
+    finalList[0][1] = linearList[1]
+    finalList[0][2] = linearList[2]
+
+
+    finalList[1][0] = linearList[3]
+    finalList[1][1] = linearList[4]
+    finalList[1][2] = linearList[5]
+    
+    finalList[2][0] = linearList[6]
+    finalList[2][1] = linearList[7]
+    finalList[2][2] = linearList[8]
+
+    finalList[0][3] = linearList[9]
+    finalList[1][3] = linearList[10]
+    finalList[2][3] = linearList[11]
+
+
+    finalList[3][0] = 0
+    finalList[3][1] = 0
+    finalList[3][2] = 0
+    finalList[3][3] = 1
+
+
+    return finalList
+
+# This method closes the gripper
+def createSegment3( current_state, k ):
+    
+    totalSeconds = 100
+    N = float(totalSeconds) / float(k)
+
+    X_start = current_state.copy()
+
+    X_end = current_state.copy()
+
+    # The total time in seconds
+    Tf = totalSeconds
+    # method describes cubic or quintic scaling
+    method = 5
+    # For testing, just compute the first segment
+    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+   
+   # Take the 3-D array and put it into a 2-D form
+    path_states = process_array(path_states, 1)
+
+    return path_states
+
+
+
 # This method will generate the trajectory
 # The initial configuration of the end-effector in the reference trajectory: Tse,initial.
 # The cube's initial configuration: Tsc,initial.
@@ -82,27 +181,30 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
 
     # List of order of the path entries 
     # r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
-
-    totalSeconds = 10
-    N = float(totalSeconds) / float(k) 
+    
     
     # path_states = np.zeros( (N, 13) )
     path_states = np.array([])
 
-    # Use ScrewTrajectory or CartesianTrajectory
-    X_start = T_se_initial   
-    X_end = T_sc_initial
-    # The total time in seconds
-    Tf = totalSeconds
-    # method describes cubic or quintic scaling
-    method = 5
     
-    # For testing, just compute the first segment
-    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+    # Create the first segment of the path
+    segment_1 = createSegment1(T_se_initial, T_sc_initial, k)
     
-    # Take the 3-D array and put it into a 2-D form
-    path_states = process_array(path_states, 0)
+    current_gripper_state = segment_1[len(segment_1) - 1]
     
+    current_gripper_state =  convertLinearToSE3(current_gripper_state)
+    print(current_gripper_state)
+
+    # Create the second segment
+    segment_2 = createSegment2(current_gripper_state, T_sc_initial, k) 
+       
+    current_gripper_state = segment_2[len(segment_2) - 1]
+    current_gripper_state =  convertLinearToSE3(current_gripper_state)
+    segment_3 = createSegment3(current_gripper_state, k)
+    
+    # Combine segment1 and segment2
+    path_states = np.concatenate( (segment_1, segment_2) )
+    path_states = np.concatenate( (path_states, segment_3) )
 
     return path_states
 
@@ -146,9 +248,11 @@ T_se_initial = np.array( [ [0, 0, 1, 0],
                            [0, 0, 0, 1] ] )
 
 T_sc_initial = np.array( [ [0, 0, 1, 1],
-                           [-1, 0, 0, 0],
-                           [0, 0, 1, 0.3],
+                           [0, 1, 0, 0],
+                           [-1, 0, 0, 0.001],
                            [0, 0, 0, 1] ] )
+
+# T_ce_grasp =    
 
 # T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k
 allStates = TrajectoryGenerator( T_se_initial, T_sc_initial, 0, 0, 0, 1)
