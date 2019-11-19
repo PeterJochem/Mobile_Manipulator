@@ -77,8 +77,11 @@ def createSegment1( T_se_initial, T_sc_initial, k ):
 
     X_end = T_sc_initial.copy()
     # Add a few cms to the z coordinate 
+    
+    X_end = X_end.astype(float)
     X_end[2][3] = X_end[2][3] + 0.5
     
+
     # The total time in seconds
     Tf = totalSeconds
     # method describes cubic or quintic scaling
@@ -88,6 +91,9 @@ def createSegment1( T_se_initial, T_sc_initial, k ):
     # Take the 3-D array and put it into a 2-D form
     path_states = process_array(path_states, 0)
     
+    # print(path_states)
+    # print(X_end)
+
     return path_states
 
 # This segment will 
@@ -108,7 +114,7 @@ def createSegment2(T_se_initial, T_sc_initial, k ):
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
     # Take the 3-D array and put it into a 2-D form
     path_states = process_array(path_states, 0)
-
+    
     return path_states
 
 # Take the linear array and construct the SE3 representation 
@@ -165,6 +171,69 @@ def createSegment3( current_state, k ):
 
     return path_states
 
+# Moves the robot from grasping the block to 
+def createSegment4( current_state, standoff_state, k ):
+        
+    totalSeconds = 100
+    N = float(totalSeconds) / float(k)
+
+    X_start = current_state.copy()
+
+    X_end = standoff_state.copy()
+
+    # The total time in seconds
+    Tf = totalSeconds
+    # method describes cubic or quintic scaling
+    method = 5
+    # For testing, just compute the first segment
+    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+
+    # Take the 3-D array and put it into a 2-D form
+    path_states = process_array(path_states, 1)
+    
+    return path_states
+
+def createSegment5(  current_state, standoff_state, k):
+
+    totalSeconds = 100
+    N = float(totalSeconds) / float(k)
+
+    X_start = current_state.copy()
+
+    X_end = standoff_state.copy()
+
+    # The total time in seconds
+    Tf = totalSeconds
+    # method describes cubic or quintic scaling
+    method = 5
+    # For testing, just compute the first segment
+    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+
+    # Take the 3-D array and put it into a 2-D form
+    path_states = process_array(path_states, 1)
+
+    return path_states
+
+def createSegment6( current_state, goal_state, k ):
+
+    totalSeconds = 100
+    N = float(totalSeconds) / float(k)
+
+    X_start = current_state.copy()
+
+    X_end = goal_state.copy()
+
+    # The total time in seconds
+    Tf = totalSeconds
+    # method describes cubic or quintic scaling
+    method = 5
+    # For testing, just compute the first segment
+    path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+
+    # Take the 3-D array and put it into a 2-D form
+    path_states = process_array(path_states, 1)
+
+    return path_states
 
 
 # This method will generate the trajectory
@@ -176,14 +245,10 @@ def createSegment3( current_state, k ):
 # The number of trajectory reference configurations per 0.01 seconds: k. The value k is an integer 
 # with a value of 1 or greater.
 def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k):
-    
-    # This method should call CartesianCoordinates 8 times
 
     # List of order of the path entries 
     # r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
     
-    
-    # path_states = np.zeros( (N, 13) )
     path_states = np.array([])
 
     
@@ -191,20 +256,41 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     segment_1 = createSegment1(T_se_initial, T_sc_initial, k)
     
     current_gripper_state = segment_1[len(segment_1) - 1]
-    
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
-    print(current_gripper_state)
+    standoff_state_initial = current_gripper_state.copy()  
 
     # Create the second segment
     segment_2 = createSegment2(current_gripper_state, T_sc_initial, k) 
-       
+    
     current_gripper_state = segment_2[len(segment_2) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
+    
     segment_3 = createSegment3(current_gripper_state, k)
     
-    # Combine segment1 and segment2
+    # current_gripper_state is the same after the prior step
+    segment_4 = createSegment4( current_gripper_state, standoff_state_initial, k )
+    
+    current_gripper_state = segment_4[len(segment_4) - 1]
+    current_gripper_state =  convertLinearToSE3(current_gripper_state)
+
+    standoff_final = T_sc_final.copy()
+    standoff_final = standoff_final.astype(float)
+    standoff_final[2][3] = standoff_final[2][3] + 0.5
+    segment_5 = createSegment5( current_gripper_state, standoff_final, k )
+    
+
+    current_gripper_state = segment_5[len(segment_5) - 1]
+    current_gripper_state =  convertLinearToSE3(current_gripper_state)
+    segment_6 = createSegment6( current_gripper_state, T_sc_final, k )
+
+    # Combine each segment
+    # path_states = segment_1
     path_states = np.concatenate( (segment_1, segment_2) )
     path_states = np.concatenate( (path_states, segment_3) )
+    path_states = np.concatenate( (path_states, segment_4) )
+    path_states = np.concatenate( (path_states, segment_5) )
+    path_states = np.concatenate( (path_states, segment_6) )
+
 
     return path_states
 
@@ -249,13 +335,31 @@ T_se_initial = np.array( [ [0, 0, 1, 0],
 
 T_sc_initial = np.array( [ [0, 0, 1, 1],
                            [0, 1, 0, 0],
-                           [-1, 0, 0, 0.001],
+                           [-1, 0, 0, 0],
                            [0, 0, 0, 1] ] )
 
-# T_ce_grasp =    
+T_sc_final = np.array( [ [0, 0, 1, 0],
+                         [0, 1, 0, -1],
+                         [-1, 0, 0, 0],
+                         [0, 0, 0, 1] ] )
+
+
+T_ce_grasp = np.array( [ [0, 0, 1, 0],
+                         [0, 1, 0, 0],
+                         [-1, 0, 0, 0],
+                         [0, 0, 0, 1] ] )
+   
+
+T_ce_standoff = np.array( [ [0, 0, 1, 0],
+                           [0, 1, 0, 0],
+                           [-1, 0, 0, 0.5],
+                           [0, 0, 0, 1] ] )
+
+
+k = 1
 
 # T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k
-allStates = TrajectoryGenerator( T_se_initial, T_sc_initial, 0, 0, 0, 1)
+allStates = TrajectoryGenerator(  T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
 
 
 # Save the csv file 
