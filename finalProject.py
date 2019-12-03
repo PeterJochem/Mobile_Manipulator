@@ -544,7 +544,6 @@ allStates = TrajectoryGenerator(  T_se_initial, T_sc_initial, T_sc_final, T_ce_g
 np.savetxt("milestone1.csv", allStates, delimiter=",")
 
 
-# u = (10,10,10,10)
 N = 100
 allStates = np.zeros( (N, 12)  )  
 currentState = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   )
