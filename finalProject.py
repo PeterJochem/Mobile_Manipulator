@@ -11,23 +11,104 @@ allStates = np.array([])
 # Input: 12 vector of current state 
 # 3 variables for the chassis configuration, 5 variables for the arm 
 # configuration, and 4 variables for the wheel angles
-# Output: 12 vector of the next state
-def nextState(current_state, controls):
+# Output: 12 vector of the next state 
+
+# Input data 
+# currentState
+# [0, 2] = (x, y, theta)
+# [3, 7] = arm configuration
+# [7, 11] = wheel configuration
+
+# controls 
+# [0, 4] = arm torques 
+# [5, 8] = wheel velocities
+def nextState(currentState, controls):
 
     dt = 0.01
     
-    new_state = current_state.copy()
-
-    # new arm joint angles = (old arm joint angles) + (joint speeds) * delta t
-    
-    # new wheel angles = (old wheel angles) + (wheel speeds) * delta 2
-    new_state[8] = current_state[8] + controls[5] * dt   
-    new_state[9] = current_state[9] + controls[6] * dt
-    new_state[10] = current_state[10] + controls[7] * dt
-    new_state[11] = current_state[11] + controls[8] * dt
-    
+    new_state = currentState.copy()
+        
+    # Euler Integration 
+    # new arm joint angles = (old arm joint angles) + (joint speeds) * delta t 
+    new_state[3] = currentState[3] + ( controls[0] * dt )
+    new_state[4] = currentState[4] + ( controls[1] * dt )
+    new_state[5] = currentState[5] + ( controls[2] * dt )
+    new_state[6] = currentState[6] + ( controls[3] * dt )
+ 
+    # new wheel angles = (old wheel angles) + (wheel speeds) * delta 2 
+    new_state[8] = currentState[8] + (controls[5] * dt)   
+    new_state[9] = currentState[9] + (controls[6] * dt)
+    new_state[10] = currentState[10] + (controls[7] * dt)
+    new_state[11] = currentState[11] + (controls[8] * dt)
+     
     # new chassis configuration is obtained from odometry, as described in Chapter 13.4 
+    r = 0.0475 
+    l = 0.47 / 2.0
+    w = 0.30 / 2.0
+    
+    H_p_i = np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T 
+        
+    # wheel velocities are controls[5, 8]
+    # No transpose?
+    wheel_velocities = np.array( [controls[5] , controls[6], controls[7], controls[8] ] ).T
 
+    delta_theta = ( wheel_velocities ) * dt
+
+    twist_b = ( (r / 4.0) * ( np.matmul( H_p_i, delta_theta) ) )
+    
+    # print("The twist is ")
+    # print( twist_b )
+    
+
+    # The twist is not 1 x 6
+    w_b_z = twist_b[0]
+    v_b_x = twist_b[1]
+    v_b_y = twist_b[2]
+
+    # print("")
+    # print("v_b_x is ")
+    # print(v_b_x)
+    
+    delta_q_b = None
+
+    if ( abs(w_b_z) < 0.01 ):
+        delta_q_b = np.array( [ 0, v_b_x, v_b_y ]   )
+    else:
+        
+        value1 = (v_b_x * np.sin(w_b_z) + v_b_y * (np.cos(w_b_z - 1) ) ) / w_b_z  
+        
+        value2 = (v_b_y * np.sin(w_b_z) + v_b_x * ( 1 - np.cos(w_b_z)  )  ) / w_b_z 
+    
+        delta_q_b = np.array( [ w_b_z, value1, value2 ]  )
+
+
+    # print("")
+    # print("delta_q_b is ")
+    # print(delta_q_b)
+
+    
+    # Transoform delta_q_b to the space frame 
+    # Rotate by the chassis's angle
+    angle = currentState[2]
+    rotationMatrix = np.array( [ [1, 0, 0], [0, np.cos(angle), np.sin(angle)  ], [ 0, -1 * np.sin(angle), np.cos(angle) ] ] ).T 
+
+    q_s = np.matmul( rotationMatrix, delta_q_b)
+
+    # print(" ")
+    # print("q_s is ")
+    # print(q_s)
+
+    # Add the delta q to the old values
+    new_state[0] = new_state[0] + q_s[0] 
+    new_state[1] = new_state[1] + q_s[1]
+    new_state[2] = new_state[2] + q_s[2]
+    
+
+    # print("")
+    # print(q_s[1])
+
+    # print("The new state is ")
+    # print(new_state)
     
     return new_state
 
@@ -89,7 +170,7 @@ def createSegment1( T_se_initial, T_sc_initial, T_ce_standoff, k ):
     X_start = T_se_initial.copy()
 
     X_end = T_se_standoff.copy()
-    print(X_end)
+    # print(X_end)
     # X_end = T_sc_initial.copy()
     # Add a few cms to the z coordinate 
     
@@ -461,6 +542,25 @@ allStates = TrajectoryGenerator(  T_se_initial, T_sc_initial, T_sc_final, T_ce_g
 
 # Save the csv file 
 np.savetxt("milestone1.csv", allStates, delimiter=",")
+
+
+# u = (10,10,10,10)
+N = 100
+allStates = np.zeros( (N, 12)  )  
+currentState = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   )
+controls = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, -1 * 10.0, 10.0, -1 * 10.0,  10.0]  )
+
+for i in range(N):
+    
+    # allStates = np.concatenate( (allStates, currentState) )
+    allStates[i] = currentState
+    currentState = nextState(currentState, controls)
+    
+
+# Save the file for the second milestone
+np.savetxt("milestone2.csv", allStates, delimiter=",")
+
+
 
 
 
