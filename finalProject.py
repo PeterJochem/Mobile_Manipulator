@@ -510,22 +510,64 @@ current_state = np.zeros(12)
 #    allStates[i] = current_state
 
 
+runningError = 0
 
 # Milestone 3 
 def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     
+    global runningError
+
+
     # Use equation to calculate the twist
-    pass
-
+    result = np.matmul( mr.TransInv( X ), X_d )
+    # print(result)
     
-    # Get the psuedo inverse of J
-
-
-    # Use the pseudo inverse to calculate the controls 
+    # Is this the right adjoint? 
+    # Now apply the bracket operation? 
+    AdjointResult = mr.Adjoint( result ) 
     
 
+    v_d = (1.0 / dt) * ( mr.MatrixLog6(  np.matmul( mr.TransInv( X_d ), X_d_next )  )  )
+    
+    v_d = mr.se3ToVec( v_d )
+    
+    X_err =  mr.MatrixLog6( np.matmul( mr.TransInv( X ), X_d ) ) 
+    X_err = mr.se3ToVec( X_err )
+    
+    runningError = runningError + (X_err * dt) 
+    
+    result = np.matmul(AdjointResult, v_d) + np.matmul( K_p, X_err ) + np.matmul( K_i, runningError ) 
+        
+    return result
 
 
+# Testing setup 
+X = np.array( [ [0.170, 0.0, -1 * 0.985, 0.0], [0.0, 1.0, 0.0, 0.0], [0.985, 0.0, 0.170, 0.0], [0.387, 0.0, 0.570, 1.0] ]   ).T
+
+X_d = np.array( [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.5, 0.0, 0.5, 1.0] ] ).T 
+
+X_d_next = np.array(  [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0],  [1.0, 0.0, 0.0, 0.0], [ 0.6, 0.0, 0.3, 1.0 ]  ]    ).T
+
+dt = 0.01
+K_p = np.zeros( (6 , 6) )
+K_i = np.zeros( (6 , 6) ) 
+
+twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
+
+J = np.array(  [   [0.030, 0.0, -0.005, 0.002, -0.024, 0.012],  [ -0.030, 0.0, 0.005, 0.002, 0.024, 0.012 ], [-0.030, 0.0, 0.005, 0.002, 0.0, 0.012 ], 
+    
+    [ 0.030, 0.0, -0.005, 0.002, 0.0, 0.012], [-0.985, 0.0, 0.170, 0.0, 0.221, 0.0],  [0.0, -1.0, 0.0, -0.240, 0.0, -0.288 ],
+    
+    [0.0, -1.0, 0.0, -0.214, 0.0, -0.135 ], [ 0.0, -1.0, 0.0, -0.218, 0.0, 0.0 ], [ 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 ]  ] ).T
+
+
+
+J_pi = np.linalg.pinv( J ) 
+
+result = np.matmul( J_pi, twist )
+print(result)
+
+### End of testing setup 
 
 # Milestone 2
 # Call TrajectoryGenerator 8 times and concatenate each segment
@@ -537,10 +579,12 @@ T_se_initial = np.array( [ [0, 0, 1, 0],
                            [0, 0, 0, 1] ] )
 
 
+
 T_sc_initial = np.array( [ [1, 0, 0, 1],
                            [0, 1, 0, 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1] ] )
+
 
 T_sc_final = np.array( [ [0, 1, 0, 0],
                          [-1, 0, 0, -1],
