@@ -22,12 +22,25 @@ allStates = np.array([])
 # controls 
 # [0, 4] = arm torques 
 # [5, 8] = wheel velocities
-def nextState(currentState, controls):
+def nextState(currentState, controls, speedLimit = 10):
+
+    # Check for illegal control values
+    for i in range(len(controls) ):
+        
+        negative = True
+        if ( controls[i] > 0 ):
+            negative = False
+
+        if ( abs(controls[i] ) > speedLimit):
+            controls[i] = speedLimit
+            
+            if ( negative == True ):
+                controls[i] = -1 * controls[i]
 
     dt = 0.01
     
     new_state = currentState.copy()
-        
+    
     # Euler Integration 
     # new arm joint angles = (old arm joint angles) + (joint speeds) * delta t 
     new_state[3] = currentState[3] + ( controls[0] * dt )
@@ -498,6 +511,22 @@ current_state = np.zeros(12)
 
 
 
+# Milestone 3 
+def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
+    
+    # Use equation to calculate the twist
+    pass
+
+    
+    # Get the psuedo inverse of J
+
+
+    # Use the pseudo inverse to calculate the controls 
+    
+
+
+
+
 # Milestone 2
 # Call TrajectoryGenerator 8 times and concatenate each segment
 
@@ -547,7 +576,7 @@ np.savetxt("milestone1.csv", allStates, delimiter=",")
 N = 100
 allStates = np.zeros( (N, 12)  )  
 currentState = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   )
-controls = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, -1 * 10.0, 10.0, -1 * 10.0,  10.0]  )
+controls = np.array( [10.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0,  10.0, 10.0]  )
 
 for i in range(N):
     
@@ -555,7 +584,6 @@ for i in range(N):
     allStates[i] = currentState
     currentState = nextState(currentState, controls)
     
-
 # Save the file for the second milestone
 np.savetxt("milestone2.csv", allStates, delimiter=",")
 
