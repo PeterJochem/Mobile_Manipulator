@@ -538,6 +538,7 @@ def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     
     result = np.matmul(AdjointResult, v_d) + np.matmul( K_p, X_err ) + np.matmul( K_i, runningError ) 
         
+    print("V is " + str(result) )
     return result
 
 
@@ -549,7 +550,10 @@ X_d = np.array( [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0
 X_d_next = np.array(  [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0],  [1.0, 0.0, 0.0, 0.0], [ 0.6, 0.0, 0.3, 1.0 ]  ]    ).T
 
 dt = 0.01
-K_p = np.zeros( (6 , 6) )
+
+# K_p = np.zeros( (6 , 6) )
+K_p = np.identity(6)
+
 K_i = np.zeros( (6 , 6) ) 
 
 twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
@@ -562,10 +566,13 @@ J = np.array(  [   [0.030, 0.0, -0.005, 0.002, -0.024, 0.012],  [ -0.030, 0.0, 0
 
 
 
-J_pi = np.linalg.pinv( J ) 
+J_pi = np.linalg.pinv( J, rcond = 0.0001 ) 
 
 result = np.matmul( J_pi, twist )
-print(result)
+
+print("")
+print("The controls vector is " + str(result) )
+
 
 ### End of testing setup 
 
@@ -623,6 +630,7 @@ currentState = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
 controls = np.array( [10.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0,  10.0, 10.0]  )
 
 for i in range(N):
+        
     
     # allStates = np.concatenate( (allStates, currentState) )
     allStates[i] = currentState
@@ -630,6 +638,101 @@ for i in range(N):
     
 # Save the file for the second milestone
 np.savetxt("milestone2.csv", allStates, delimiter=",")
+
+
+
+############### Put it all together #####################
+
+# Define the home configuration
+M_home = np.array(  [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0 ], [ 0.033, 0.0, 0.6546, 1.0] ).T
+
+# Define the screw axes at the home configuration
+
+b1 = np.array( [ 0.0, 0.0, 1.0, 0.0, 0.033, 0.0 ] )
+    
+b2 = np.array( [0.0, -1.0, 0.0, -0.5076, 0, 0 ] )
+    
+b3 = np.array( [ 0.0, -1.0, 0.0, -0.3526, 0.0, 0.0 ] )
+    
+b4 = np.array( [ 0.0, -1.0, 0.0, -0.2176, 0.0, 0.0 ] )
+    
+b5 = np.array( [ 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 ] )
+
+# REMEBER TO TRANSPOSE THIS
+blist = np.array( [b1, b2, b3, b4, b5]  ).T
+# REMEMBER TO TRANSPOSE THIS
+
+# This describes where the base of the arm is in the chassis's frame
+# This is fixed as dthe chassis and the arm are rigidly attatched
+T_b0 = np.array(  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.1662, 0.0, 0.0026, 1.0] ).T
+
+M_0e =  np.array(  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.033, 0.0, 0.6546, 1.0] ).T
+
+# This is the H matrix for the robot with mecanmum wheels
+H_p_i = np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T
+
+F6 = np.linalg.pinv( H_p_i, rcond = 0.0001 )
+
+
+# Generate the refrence trajectory
+trajectory = TrajectoryGeneration()
+
+N = len(trajectory)
+
+X_d = trajectory[0]
+
+J_home = FKinBody()
+
+
+# Initialize the system
+# chassis phi, chassis x, chassis y, J1, J2, J3, J4, J5, W1, W2, W3, W4, gripper state
+currentState = trajectory[0]  
+
+
+for i in range( N - 1 ):
+   
+    X_d = trajectory[i]
+    X_d_next = trajectory[i + 1]
+
+    # Calculate the control law
+    # X, X_d, X_d_next, K_p, K_i, dt
+    twist = FeedbackControl()
+    
+    # FKinBody(M, Blist, thetalist):
+    T_0e = FKinBody(M_home, blist, )
+
+    intermediate1 = mr.TransInv( T_0e ) * mr.TransInv( T_b0  )  
+    
+    # F6 is the pseudoinverse of H(0) 
+    J_base = ( mr.MatrixLog6( mr.Adjoint( intermediate1 )  )  ) * F6
+    
+    # JacobianBody(Blist, thetalist)
+    arm_theta = np.array( currentState[3], currentState[4], currentState[5], currentState[6], currentState[7]  ) 
+     
+    # thetaList would be just the thetalist of the arm
+    J_arm = mr.JacobianBody( blist, arm_theta )
+
+    # Is this the best way to do this?
+    J_total = np.concatenate(J_base, J_arm)
+     
+     
+    # Generate the controls vector 
+    controls = np.linalg.pinv( J_total, rcond = 0.0001 ) * twist
+      
+    
+    # nextState(currentState, controls, speedLimit = 10) 
+    # Change nextState to also take in dt? 
+    currentState = NextState(currentState, controls) 
+    
+    
+
+
+    # Store every kth state returned from NextState 
+    # Store every kth X_err 
+
+
+#########################################################
+
 
 
 
