@@ -551,8 +551,8 @@ X_d_next = np.array(  [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0],  [1.0, 0.0,
 
 dt = 0.01
 
-# K_p = np.zeros( (6 , 6) )
-K_p = np.identity(6)
+K_p = np.zeros( (6 , 6) )
+# K_p = np.identity(6)
 
 K_i = np.zeros( (6 , 6) ) 
 
@@ -640,11 +640,63 @@ for i in range(N):
 np.savetxt("milestone2.csv", allStates, delimiter=",")
 
 
+# Take a trajectory and construct the T_end_effector
+def convertToMatrix( state ):
+
+    myMatrix = np.zeros( (4, 4) )
+
+    x = state[9]
+    y = state[10]
+    z = state[11]
+
+    myMatrix[0][0] = state[0] 
+    myMatrix[0][1] = state[1]
+    myMatrix[0][2] = state[2]
+    myMatrix[0][3] = x
+   
+    myMatrix[1][0] = state[3] 
+    myMatrix[1][1] = state[4]
+    myMatrix[1][2] = state[5]
+    myMatrix[1][3] = y
+    
+    myMatrix[2][0] = state[6]
+    myMatrix[2][1] = state[7]
+    myMatrix[2][2] = state[8]
+    myMatrix[2][3] = z
+    
+    myMatrix[3][0] = 0.0
+    myMatrix[3][1] = 0.0
+    myMatrix[3][2] = 0.0
+    myMatrix[3][3] = 1.0
+
+    return myMatrix
+
+
+# # currentState
+# [0, 2] = (x, y, theta)
+# [3, 7] = arm configuration
+# [7, 11] = wheel configuration
+
+def construct_T_Sb(currentState):
+        
+    angle = currentState[2]
+    x = currentState[0]
+    y = currentState[1]
+    z = 0.0963
+
+    myArray = np.array( [  [np.cos(angle), np.sin(angle), 0.0, 0.0 ], [-1 * np.sin(angle), np.cos(angle), 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0 ], [x, y, z, 1.0]     ]  ).T
+
+
+    
+    return myArray
+
+
 
 ############### Put it all together #####################
 
 # Define the home configuration
-M_home = np.array(  [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0 ], [ 0.033, 0.0, 0.6546, 1.0] ).T
+M_home = np.array( [  [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0 ], [ 0.033, 0.0, 0.6546, 1.0] ] ).T
 
 # Define the screw axes at the home configuration
 
@@ -664,67 +716,96 @@ blist = np.array( [b1, b2, b3, b4, b5]  ).T
 
 # This describes where the base of the arm is in the chassis's frame
 # This is fixed as dthe chassis and the arm are rigidly attatched
-T_b0 = np.array(  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.1662, 0.0, 0.0026, 1.0] ).T
+T_b0 = np.array( [  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.1662, 0.0, 0.0026, 1.0] ] ).T
 
-M_0e =  np.array(  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.033, 0.0, 0.6546, 1.0] ).T
+M_0e =  np.array( [  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.033, 0.0, 0.6546, 1.0] ] ).T
 
 # This is the H matrix for the robot with mecanmum wheels
+r = 0.0475
+l = 0.47 / 2.0
+w = 0.30 / 2.0
 H_p_i = np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T
 
-F6 = np.linalg.pinv( H_p_i, rcond = 0.0001 )
+F = np.linalg.pinv( H_p_i, rcond = 0.0001 )
 
 
 # Generate the refrence trajectory
-trajectory = TrajectoryGeneration()
+# T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k 
+trajectory = TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
 
 N = len(trajectory)
 
 X_d = trajectory[0]
 
-J_home = FKinBody()
+# Define K_p
+# Define K_i
 
+dt = 0.01
 
 # Initialize the system
 # chassis phi, chassis x, chassis y, J1, J2, J3, J4, J5, W1, W2, W3, W4, gripper state
-currentState = trajectory[0]  
+# Is this how I initialize this?
+X = convertToMatrix( trajectory[0] )  
 
+#print("")
+#print("X is ")
+#print(X)
+print("")
+
+N = len(trajectory)
+# N = 100
 
 for i in range( N - 1 ):
-   
-    X_d = trajectory[i]
-    X_d_next = trajectory[i + 1]
+    
+    # What is X? X is where we actually are 
+
+    X_d = convertToMatrix( trajectory[i] )
+    X_d_next = convertToMatrix( trajectory[i + 1] )
 
     # Calculate the control law
     # X, X_d, X_d_next, K_p, K_i, dt
-    twist = FeedbackControl()
-    
-    # FKinBody(M, Blist, thetalist):
-    T_0e = FKinBody(M_home, blist, )
+    # X, X_d, X_d_next are all SE(3) matrices 
+    twist = FeedbackControl( X,  X_d, X_d_next, K_p, K_i, dt )
+        
+    F6 = F.T 
+    F6 = np.concatenate( ( (np.zeros( (2, 4) ) ), F6), axis = 0 )    
+    F6 = np.concatenate( ( F6, (np.zeros( (1, 4) ) ) ), axis = 0 )
 
-    intermediate1 = mr.TransInv( T_0e ) * mr.TransInv( T_b0  )  
+    # FKinBody(M, Blist, thetalist):
+    # What is thetalist?? 
+    arm_theta = np.array( [ currentState[3], currentState[4], currentState[5], currentState[6], currentState[7] ]  )
+    T_0e = mr.FKinBody(M_home, blist, arm_theta )
     
-    # F6 is the pseudoinverse of H(0) 
-    J_base = ( mr.MatrixLog6( mr.Adjoint( intermediate1 )  )  ) * F6
+     
+    intermediate1 = np.matmul( mr.TransInv( T_0e ) , mr.TransInv( T_b0  ) )  
+
+    J_base = np.matmul( ( mr.Adjoint( intermediate1 )  ) , F6 )
     
     # JacobianBody(Blist, thetalist)
-    arm_theta = np.array( currentState[3], currentState[4], currentState[5], currentState[6], currentState[7]  ) 
-     
     # thetaList would be just the thetalist of the arm
     J_arm = mr.JacobianBody( blist, arm_theta )
+    
+    J_total = np.concatenate( (J_base, J_arm ), axis = 1)
+    
+    
+    controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.0001 ) , twist)
+     
+    nextState_info = nextState(currentState, controls) 
+    
+    # X is where the robot ACTUALLY is 
+    # X is the end_effector T in the space frame 
+    
+    # Calculate T_sb from the info we have
+    # T_Sb is the orientation and tranlation of the chassis in the space frame
+    
+    T_sb = construct_T_Sb( nextState_info ) 
+    
+    X = np.matmul(  T_sb  , np.matmul(T_b0 , T_0e) )
+    
+    print("")
+    print(X)
+    print("")
 
-    # Is this the best way to do this?
-    J_total = np.concatenate(J_base, J_arm)
-     
-     
-    # Generate the controls vector 
-    controls = np.linalg.pinv( J_total, rcond = 0.0001 ) * twist
-      
-    
-    # nextState(currentState, controls, speedLimit = 10) 
-    # Change nextState to also take in dt? 
-    currentState = NextState(currentState, controls) 
-    
-    
 
 
     # Store every kth state returned from NextState 
