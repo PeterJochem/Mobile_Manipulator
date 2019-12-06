@@ -15,14 +15,14 @@ allStates = np.array([])
 
 # Input data 
 # currentState
-# [0, 2] = (x, y, theta)
+# [0, 2] = (theta, x, y)
 # [3, 7] = arm configuration
-# [7, 11] = wheel configuration
+# [8, 11] = wheel configuration
 
 # controls 
 # [0, 4] = arm torques 
 # [5, 8] = wheel velocities
-def nextState(currentState, controls, speedLimit = 10):
+def nextState(currentState, controls, speedLimit = 12.5):
 
     # Check for illegal control values
     for i in range(len(controls) ):
@@ -47,7 +47,8 @@ def nextState(currentState, controls, speedLimit = 10):
     new_state[4] = currentState[4] + ( controls[1] * dt )
     new_state[5] = currentState[5] + ( controls[2] * dt )
     new_state[6] = currentState[6] + ( controls[3] * dt )
- 
+    new_state[7] =  currentState[7] + ( controls[4] * dt )
+
     # new wheel angles = (old wheel angles) + (wheel speeds) * delta 2 
     new_state[8] = currentState[8] + (controls[5] * dt)   
     new_state[9] = currentState[9] + (controls[6] * dt)
@@ -59,15 +60,17 @@ def nextState(currentState, controls, speedLimit = 10):
     l = 0.47 / 2.0
     w = 0.30 / 2.0
     
-    H_p_i = np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T 
+    # Do I need to use (r / 4.0) ?
+    H_p_i = (r / 4.0) * np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T 
         
     # wheel velocities are controls[5, 8]
     # No transpose?
     wheel_velocities = np.array( [controls[5] , controls[6], controls[7], controls[8] ] ).T
 
     delta_theta = ( wheel_velocities ) * dt
-
-    twist_b = ( (r / 4.0) * ( np.matmul( H_p_i, delta_theta) ) )
+    
+    # ?
+    twist_b = ( ( np.matmul( H_p_i, delta_theta) ) )
     
     # print("The twist is ")
     # print( twist_b )
@@ -88,11 +91,11 @@ def nextState(currentState, controls, speedLimit = 10):
         delta_q_b = np.array( [ 0, v_b_x, v_b_y ]   )
     else:
         
-        value1 = (v_b_x * np.sin(w_b_z) + v_b_y * (np.cos(w_b_z - 1) ) ) / w_b_z  
+        value1 = ( (v_b_x * np.sin(w_b_z) ) + (v_b_y * (np.cos(w_b_z - 1) ) ) ) / w_b_z  
         
-        value2 = (v_b_y * np.sin(w_b_z) + v_b_x * ( 1 - np.cos(w_b_z)  )  ) / w_b_z 
+        value2 = ( (v_b_y * np.sin(w_b_z) ) + (v_b_x * ( 1 - np.cos(w_b_z)  ) ) ) / w_b_z 
     
-        delta_q_b = np.array( [ w_b_z, value1, value2 ]  )
+        delta_q_b = np.array( [ w_b_z, value1, value2 ]  ).T
 
 
     # print("")
@@ -102,7 +105,7 @@ def nextState(currentState, controls, speedLimit = 10):
     
     # Transoform delta_q_b to the space frame 
     # Rotate by the chassis's angle
-    angle = currentState[2]
+    angle = currentState[0]
     rotationMatrix = np.array( [ [1, 0, 0], [0, np.cos(angle), np.sin(angle)  ], [ 0, -1 * np.sin(angle), np.cos(angle) ] ] ).T 
 
     q_s = np.matmul( rotationMatrix, delta_q_b)
@@ -114,8 +117,13 @@ def nextState(currentState, controls, speedLimit = 10):
     # Add the delta q to the old values
     new_state[0] = new_state[0] + q_s[0] 
     new_state[1] = new_state[1] + q_s[1]
+    # new_state is [theta, x, y ... ]
+    # q_s is [theta, x, y]
     new_state[2] = new_state[2] + q_s[2]
     
+    print("The angle value is " + str(new_state[0] ) )
+    print("The x value is " + str(new_state[1] ) )
+    print("The y value is " + str(new_state[2] ) )
 
     # print("")
     # print(q_s[1])
@@ -260,6 +268,31 @@ def convertLinearToSE3(linearList):
 
 
     return finalList
+
+# Take the T_se and convert it to the format that 
+# the csv file wants
+# chassis phi, chassis x, chassis y, J1, J2, J3, J4, J5, W1, W2, W3, W4, gripper state
+# Input: currentState from nextState function
+def convertSE3_List( array ):
+
+    myList = np.zeros(13)
+    
+    myList[0] = array[2] 
+    myList[1] = array[0]
+    myList[2] = array[1]
+    myList[3] = array[3]
+    myList[4] = array[4]
+    myList[5] = array[5]
+    myList[6] = array[6]
+    myList[7] = array[7]
+    myList[8] = array[8]
+    myList[9] = array[9]
+    myList[10] = array[10]
+    myList[11] = array[11]
+    myList[12] = 0
+
+    return myList
+
 
 # This method closes the gripper
 def createSegment3( current_state, k ):
@@ -538,7 +571,7 @@ def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     
     result = np.matmul(AdjointResult, v_d) + np.matmul( K_p, X_err ) + np.matmul( K_i, runningError ) 
         
-    print("V is " + str(result) )
+    # print("V is " + str(result) )
     return result
 
 
@@ -551,10 +584,13 @@ X_d_next = np.array(  [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0],  [1.0, 0.0,
 
 dt = 0.01
 
+
+# 80, 50
 K_p = np.zeros( (6 , 6) )
-# K_p = np.identity(6)
+K_p = 50 * np.identity(6)
 
 K_i = np.zeros( (6 , 6) ) 
+#K_i = 0.1 *  np.identity(6)
 
 twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
 
@@ -566,9 +602,13 @@ J = np.array(  [   [0.030, 0.0, -0.005, 0.002, -0.024, 0.012],  [ -0.030, 0.0, 0
 
 
 
-J_pi = np.linalg.pinv( J, rcond = 0.0001 ) 
+J_pi = np.linalg.pinv( J, rcond = 0.001 ) 
 
 result = np.matmul( J_pi, twist )
+
+print("The twist is ")
+print(result)
+print("")
 
 print("")
 print("The controls vector is " + str(result) )
@@ -580,39 +620,45 @@ print("The controls vector is " + str(result) )
 # Call TrajectoryGenerator 8 times and concatenate each segment
 
 # Set up the initial conditions
-T_se_initial = np.array( [ [0, 0, 1, 0],
-                           [0, 1, 0, 0],
-                           [-1, 0, 0, 0.5],
-                           [0, 0, 0, 1] ] )
+T_se_initial = np.array( [ [1.0, 0, 0.0, 0.0],
+                           [0, 1.0, 0, 0.0],
+                           [0.0, 0, 1.0, 0.5],
+                           [0, 0, 0, 1.0] ] )
 
 
 
-T_sc_initial = np.array( [ [1, 0, 0, 1],
-                           [0, 1, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1] ] )
+T_sc_initial = np.array( [ [1, 0, 0, 1.0],
+                           [0, 1, 0, 0.0],
+                           [0, 0, 1, 0.0],
+                           [0, 0, 0, 1.0] ] )
 
 
-T_sc_final = np.array( [ [0, 1, 0, 0],
-                         [-1, 0, 0, -1],
-                         [0, 0, 1, 0],
-                         [0, 0, 0, 1] ] )
+T_sc_final = np.array( [ [0, 1, 0, 0.0],
+                         [-1, 0, 0, -1.0],
+                         [0, 0, 1, 0.0],
+                         [0, 0, 0, 1.0] ] )
 
 
 
 
-T_ce_grasp = np.array( [ [-1, 0, 0, 0],
+T_ce_grasp = np.array( [ [-1, 0, 0, 0.01],
                          [0, 1, 0, 0],
-                         [0, 0, -1, 0],
+                         [0, 0, -1, 0.025],
                          [0, 0, 0, 1] ] )
    
 
+angle = np.pi / 2.0
+T_ce_standoff = np.array( [ [np.cos(angle), 0.0, np.sin(angle), 0.0],
+                           
+                           [0.0, 0.0, 0.0, 0.0],
+                           
+                           [ -1 * np.sin(angle), np.cos(angle), -1.0, 0.5],
+                           
+                           [0.0, 0.0, 0.0, 1.0] ] ) 
 
-T_ce_standoff = np.array( [ [-1, 0, 0, 0],
-                           [0, 1, 0, 0],
-                           [0, 0, -1, 0.5],
-                           [0, 0, 0, 1] ] )
-
+T_ce_grasp = T_ce_standoff.copy()
+T_ce_grasp[2][3] = 0.02
+T_ce_grasp[0][3] = 0.05
 
 k = 1
 
@@ -625,15 +671,19 @@ np.savetxt("milestone1.csv", allStates, delimiter=",")
 
 
 N = 100
+
+# Should be 13? one for gripper? 
 allStates = np.zeros( (N, 12)  )  
 currentState = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   )
-controls = np.array( [10.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0,  10.0, 10.0]  )
+controls = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, -1 * 10.0, 10.0, 10.0, -1 * 10.0]  )
 
 for i in range(N):
         
     
     # allStates = np.concatenate( (allStates, currentState) )
+    # CSV wants phi angle, x, y, joints, wheels
     allStates[i] = currentState
+    
     currentState = nextState(currentState, controls)
     
 # Save the file for the second milestone
@@ -641,6 +691,7 @@ np.savetxt("milestone2.csv", allStates, delimiter=",")
 
 
 # Take a trajectory and construct the T_end_effector
+# input is r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
 def convertToMatrix( state ):
 
     myMatrix = np.zeros( (4, 4) )
@@ -679,9 +730,9 @@ def convertToMatrix( state ):
 
 def construct_T_Sb(currentState):
         
-    angle = currentState[2]
-    x = currentState[0]
-    y = currentState[1]
+    angle = currentState[0]
+    x = currentState[1]
+    y = currentState[2]
     z = 0.0963
 
     myArray = np.array( [  [np.cos(angle), np.sin(angle), 0.0, 0.0 ], [-1 * np.sin(angle), np.cos(angle), 0.0, 0.0],
@@ -718,24 +769,55 @@ blist = np.array( [b1, b2, b3, b4, b5]  ).T
 # This is fixed as dthe chassis and the arm are rigidly attatched
 T_b0 = np.array( [  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.1662, 0.0, 0.0026, 1.0] ] ).T
 
-M_0e =  np.array( [  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.033, 0.0, 0.6546, 1.0] ] ).T
 
 # This is the H matrix for the robot with mecanmum wheels
 r = 0.0475
 l = 0.47 / 2.0
 w = 0.30 / 2.0
-H_p_i = np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T
 
-F = np.linalg.pinv( H_p_i, rcond = 0.0001 )
+# Do I need to use the r/4 for H(0)?
+H_p_i = (r / 4.0) * np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T
 
+print("")
+print(H_p_i)
+print("")
+print("")
+
+F = H_p_i
 
 # Generate the refrence trajectory
 # T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k 
 trajectory = TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
 
-N = len(trajectory)
 
-X_d = trajectory[0]
+# T_se_initial = np.array( [ [1.0, 0, 0.0, 0],
+#                           [0, 1.0, 0, 0],
+#                           [0.0, 0, 1.0, 0.5],
+#                           [0, 0, 0, 1] ] )
+
+X = T_se_initial
+
+
+#X_start = T_se_initial
+#X_end = X_start.copy()
+#X_end[0][3] = X_end[0][3] + 2.0
+
+# The total time in seconds
+#Tf = 10
+#N = 100
+# method describes cubic or quintic scaling
+#method = 5
+# For testing, just compute the first segment
+#path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+# Take the 3-D array and put it into a 2-D form
+#path_states = process_array(path_states, 0)
+
+
+# trajectory = path_states 
+
+# Test it by giving it a short and simple trajectory to follow
+
+N = len(trajectory)
 
 # Define K_p
 # Define K_i
@@ -745,35 +827,67 @@ dt = 0.01
 # Initialize the system
 # chassis phi, chassis x, chassis y, J1, J2, J3, J4, J5, W1, W2, W3, W4, gripper state
 # Is this how I initialize this?
-X = convertToMatrix( trajectory[0] )  
+# X = convertToMatrix( trajectory[0] )  
+
+
+
 
 #print("")
 #print("X is ")
 #print(X)
-print("")
+# print("")
 
 N = len(trajectory)
-# N = 100
+# N = 4
+
+length = 13
+allStates = np.zeros( (N, length) )
+
+# Initial conditions
+J3 = 0.2
+J4 = -1.6
+current_state = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0   ]  )
+
+#print("")
+#print("F is ")
+#print(F)
+#print("")
+
+print("")
+print("The trajectory is ")
+print(trajectory[0] )
+print("")
+print( convertToMatrix( trajectory[0] )  )
+print("")
+print("")
+
+# X = np.array( [  [], [], [], []    ]    )
+
+# N = 1
 
 for i in range( N - 1 ):
     
-    # What is X? X is where we actually are 
+    if ( trajectory[i][12] == 1):
+        grasp = True
+    else:
+        grasp = False 
 
     X_d = convertToMatrix( trajectory[i] )
     X_d_next = convertToMatrix( trajectory[i + 1] )
 
-    # Calculate the control law
-    # X, X_d, X_d_next, K_p, K_i, dt
-    # X, X_d, X_d_next are all SE(3) matrices 
     twist = FeedbackControl( X,  X_d, X_d_next, K_p, K_i, dt )
         
-    F6 = F.T 
+    F6 = F
     F6 = np.concatenate( ( (np.zeros( (2, 4) ) ), F6), axis = 0 )    
     F6 = np.concatenate( ( F6, (np.zeros( (1, 4) ) ) ), axis = 0 )
+    
+    # print("")
+    # print("F is ")
+    # print(F)
+    # print("")
 
-    # FKinBody(M, Blist, thetalist):
-    # What is thetalist?? 
-    arm_theta = np.array( [ currentState[3], currentState[4], currentState[5], currentState[6], currentState[7] ]  )
+    arm_theta = np.array( [ current_state[3], current_state[4], current_state[5], current_state[6], current_state[7] ]  )
+    
     T_0e = mr.FKinBody(M_home, blist, arm_theta )
     
      
@@ -785,26 +899,30 @@ for i in range( N - 1 ):
     # thetaList would be just the thetalist of the arm
     J_arm = mr.JacobianBody( blist, arm_theta )
     
-    J_total = np.concatenate( (J_base, J_arm ), axis = 1)
     
+    J_total = np.concatenate( (J_arm, J_base ), axis = 1)
     
-    controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.0001 ) , twist)
-     
-    nextState_info = nextState(currentState, controls) 
+
+    controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.01  ) , twist)
+
+    current_state = nextState(current_state, controls) 
     
-    # X is where the robot ACTUALLY is 
-    # X is the end_effector T in the space frame 
-    
-    # Calculate T_sb from the info we have
-    # T_Sb is the orientation and tranlation of the chassis in the space frame
-    
-    T_sb = construct_T_Sb( nextState_info ) 
+    T_sb = construct_T_Sb( current_state ) 
     
     X = np.matmul(  T_sb  , np.matmul(T_b0 , T_0e) )
     
-    print("")
-    print(X)
-    print("")
+    # Convert X to the desired csv list 
+    # Add the gripper state to this??
+    allStates[i] = current_state   
+
+    if ( grasp == True ):
+        allStates[i][12] = 1.0
+    else:
+        allStates[i][12] = 0.0
+
+
+# Save the csv file
+np.savetxt("milestone3.csv", allStates, delimiter=",")
 
 
 
