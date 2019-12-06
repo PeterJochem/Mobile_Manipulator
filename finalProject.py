@@ -641,26 +641,28 @@ T_sc_final = np.array( [ [0, 1, 0, 0.0],
 
 
 
+angle = np.pi / 4.0
+T_ce_grasp = np.array( [ [1.0, 0.0, 0.0, 0.0],
 
-T_ce_grasp = np.array( [ [-1, 0, 0, 0.0],
-                         [0, 1, 0, 0],
-                         [0, 0, -1, 0.0],
-                         [0, 0, 0, 1] ] )
-   
+                           [ 0.0, np.cos(angle), -1 * np.sin(angle), 0.01],
+
+                           [0.0, np.sin(angle), np.cos(angle), 0.0  ],
+
+                           [0.0, 0.0, 0.0, 1.0  ]  ] )
+
 
 angle = np.pi / 2.0
 T_ce_standoff = np.array( [ [np.cos(angle), 0.0, np.sin(angle), 0.0],
                            
-                           [0.0, 0.0, 0.0, 0.0],
+                           [0.0, 1.0, 0.0, 0.0],
                            
-                           [ -1 * np.sin(angle), np.cos(angle), -1.0, 0.5],
+                           [ -1 * np.sin(angle), np.cos(angle), 0.0, 0.3],
                            
                            [0.0, 0.0, 0.0, 1.0] ] ) 
 
-
-#T_ce_grasp = T_ce_standoff.copy()
-#T_ce_grasp[2][3] = 0.02
-#T_ce_grasp[0][3] = 0.05
+T_ce_grasp = T_ce_standoff.copy()
+T_ce_grasp[2][3] = 0.02
+T_ce_grasp[0][3] = 0.05
 
 k = 1
 
@@ -768,17 +770,17 @@ def checkCollisions( J1, currentState  ):
         returnValue = True
         newJ = createZeroColumn(newJ, 0)
 
-    if( (currentState[4] < -1.0 ) or ( currentState[4] > 1.5 ) ):
-        returnValue = True
-        newJ = createZeroColumn(newJ, 1)        
+    #if( (currentState[4] < -1.0 ) or ( currentState[4] > 1.5 ) ):
+    #    returnValue = True
+    #    newJ = createZeroColumn(newJ, 1)        
 
-    if( (currentState[5] < -2.5 ) or ( currentState[5] > 0.5 ) ):
+    if( (currentState[5] < -1.5 ) or ( currentState[5] > -0.2 ) ):
         returnValue = True
         newJ = createZeroColumn(newJ, 2)        
 
-    if ( (currentState[6] < -1.117 ) or ( currentState[6] > -0.2 ) ):   
-        returnValue = True
-        newJ = createZeroColumn(newJ, 3)     
+    #if ( (currentState[6] < -1.117 ) or ( currentState[6] > -0.2 ) ):   
+    #    returnValue = True
+    #    newJ = createZeroColumn(newJ, 3)     
 
     if(  (currentState[7] < -2.89 ) or ( currentState[7] > 2.89 )  ):   
         returnValue = True
@@ -815,7 +817,7 @@ T_b0 = np.array( [  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.
 
 
 # This is the H matrix for the robot with mecanmum wheels
-r = 0.0475
+r = 0.0475 * 1.5
 l = 0.47 / 2.0
 w = 0.30 / 2.0
 
@@ -951,8 +953,8 @@ for i in range( N - 1 ):
     priorState = current_state.copy()
     current_state = nextState(current_state, controls) 
     
-    # newJacobian, collision = checkCollisions( J_total, current_state  )  
-    collision = False
+    newJacobian, collision = checkCollisions( J_total, current_state  )  
+    # collision = False
 
     if (collision == True):
     #    print("Computing new")
