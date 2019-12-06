@@ -121,9 +121,9 @@ def nextState(currentState, controls, speedLimit = 12.5):
     # q_s is [theta, x, y]
     new_state[2] = new_state[2] + q_s[2]
     
-    print("The angle value is " + str(new_state[0] ) )
-    print("The x value is " + str(new_state[1] ) )
-    print("The y value is " + str(new_state[2] ) )
+    # print("The angle value is " + str(new_state[0] ) )
+    # print("The x value is " + str(new_state[1] ) )
+    # print("The y value is " + str(new_state[2] ) )
 
     # print("")
     # print(q_s[1])
@@ -586,11 +586,12 @@ dt = 0.01
 
 
 # 80, 50
-K_p = np.zeros( (6 , 6) )
-K_p = 50 * np.identity(6)
+# K_p = np.zeros( (6 , 6) )
+
+K_p = 30 * np.identity(6)
 
 K_i = np.zeros( (6 , 6) ) 
-#K_i = 0.1 *  np.identity(6)
+# K_i = 20 *  np.identity(6)
 
 twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
 
@@ -641,9 +642,9 @@ T_sc_final = np.array( [ [0, 1, 0, 0.0],
 
 
 
-T_ce_grasp = np.array( [ [-1, 0, 0, 0.01],
+T_ce_grasp = np.array( [ [-1, 0, 0, 0.0],
                          [0, 1, 0, 0],
-                         [0, 0, -1, 0.025],
+                         [0, 0, -1, 0.1],
                          [0, 0, 0, 1] ] )
    
 
@@ -652,7 +653,7 @@ T_ce_standoff = np.array( [ [np.cos(angle), 0.0, np.sin(angle), 0.0],
                            
                            [0.0, 0.0, 0.0, 0.0],
                            
-                           [ -1 * np.sin(angle), np.cos(angle), -1.0, 0.5],
+                           [ -1 * np.sin(angle), np.cos(angle), -1.0, 0.3],
                            
                            [0.0, 0.0, 0.0, 1.0] ] ) 
 
@@ -742,6 +743,49 @@ def construct_T_Sb(currentState):
     
     return myArray
 
+def createZeroColumn(jacobian, column):
+    
+    myArray = jacobian.copy()
+
+    for i in range( len(jacobian)  ):
+        myArray[i][column] = 0.0
+
+
+    return myArray
+    
+
+def checkCollisions( J1, currentState  ):
+    
+    # Joints are 3, 4, 5, 6, 7 of currentState
+    
+    newJ = J1.copy()
+    
+    returnValue = False
+
+    
+    if ( (currentState[3] < -2.3 ) or ( currentState[3] > 2.3 ) ):
+        returnValue = True
+        newJ = createZeroColumn(newJ, 0)
+
+    #if( (currentState[4] < -1.0 ) or ( currentState[4] > 2.0 ) ):
+    #    returnValue = True
+    #    newJ = createZeroColumn(newJ, 1)        
+
+    #if( (currentState[5] < -3 ) or ( currentState[5] > 3.14 ) ):
+    #    returnValue = True
+    #    newJ = createZeroColumn(newJ, 2)        
+
+    if ( (currentState[6] < -1.1 ) or ( currentState[6] > 1.0 ) ):
+        
+        returnValue = True
+        newJ = createZeroColumn(newJ, 3)     
+
+    if(  (currentState[7] < -2.89 ) or ( currentState[7] > 2.89 )  ):   
+        returnValue = True
+        newJ = createZeroColumn(newJ, 4)
+
+
+    return newJ, returnValue
 
 
 ############### Put it all together #####################
@@ -902,10 +946,21 @@ for i in range( N - 1 ):
     
     J_total = np.concatenate( (J_arm, J_base ), axis = 1)
     
-
     controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.001  ) , twist)
-
+    
+    priorState = current_state.copy()
     current_state = nextState(current_state, controls) 
+    
+    newJacobian, collision = checkCollisions( J_total, current_state  )  
+    
+    if (collision == True):
+    #    print("Computing new")
+        # Use the new Jacobian to calculate the new state 
+        
+        controls = np.matmul( np.linalg.pinv( newJacobian, rcond = 0.001  ) , twist)
+
+        current_state = nextState( priorState, controls)
+
     
     T_sb = construct_T_Sb( current_state ) 
     
