@@ -341,7 +341,7 @@ def createSegment4( current_state, standoff_state, k ):
 def createSegment5(  current_state, standoff_state, T_sc_final, k):
 
     #  current_gripper_state, T_ce_standoff, T_sc_final, k )
-    totalSeconds = 100
+    totalSeconds = 200
     N = float(totalSeconds) / float(k)
 
     goal_state = np.matmul( standoff_state, T_sc_final )
@@ -368,7 +368,7 @@ def createSegment6( current_state, T_sc_final, T_ce_grasp, k ):
     goal_state = np.matmul( T_sc_final, T_ce_grasp )
 
 
-    totalSeconds = 100
+    totalSeconds = 200
     N = float(totalSeconds) / float(k)
 
     X_start = current_state.copy()
@@ -588,7 +588,7 @@ dt = 0.01
 # 80, 50
 # K_p = np.zeros( (6 , 6) )
 
-K_p = 30 * np.identity(6)
+K_p = 3 * np.identity(6)
 
 K_i = np.zeros( (6 , 6) ) 
 # K_i = 20 *  np.identity(6)
@@ -644,7 +644,7 @@ T_sc_final = np.array( [ [0, 1, 0, 0.0],
 
 T_ce_grasp = np.array( [ [-1, 0, 0, 0.0],
                          [0, 1, 0, 0],
-                         [0, 0, -1, 0.1],
+                         [0, 0, -1, 0.0],
                          [0, 0, 0, 1] ] )
    
 
@@ -653,13 +653,14 @@ T_ce_standoff = np.array( [ [np.cos(angle), 0.0, np.sin(angle), 0.0],
                            
                            [0.0, 0.0, 0.0, 0.0],
                            
-                           [ -1 * np.sin(angle), np.cos(angle), -1.0, 0.3],
+                           [ -1 * np.sin(angle), np.cos(angle), -1.0, 0.5],
                            
                            [0.0, 0.0, 0.0, 1.0] ] ) 
 
-T_ce_grasp = T_ce_standoff.copy()
-T_ce_grasp[2][3] = 0.02
-T_ce_grasp[0][3] = 0.05
+
+#T_ce_grasp = T_ce_standoff.copy()
+#T_ce_grasp[2][3] = 0.02
+#T_ce_grasp[0][3] = 0.05
 
 k = 1
 
@@ -767,16 +768,15 @@ def checkCollisions( J1, currentState  ):
         returnValue = True
         newJ = createZeroColumn(newJ, 0)
 
-    #if( (currentState[4] < -1.0 ) or ( currentState[4] > 2.0 ) ):
-    #    returnValue = True
-    #    newJ = createZeroColumn(newJ, 1)        
+    if( (currentState[4] < -1.0 ) or ( currentState[4] > 1.5 ) ):
+        returnValue = True
+        newJ = createZeroColumn(newJ, 1)        
 
-    #if( (currentState[5] < -3 ) or ( currentState[5] > 3.14 ) ):
-    #    returnValue = True
-    #    newJ = createZeroColumn(newJ, 2)        
+    if( (currentState[5] < -2.5 ) or ( currentState[5] > 0.5 ) ):
+        returnValue = True
+        newJ = createZeroColumn(newJ, 2)        
 
-    if ( (currentState[6] < -1.1 ) or ( currentState[6] > 1.0 ) ):
-        
+    if ( (currentState[6] < -1.117 ) or ( currentState[6] > -0.2 ) ):   
         returnValue = True
         newJ = createZeroColumn(newJ, 3)     
 
@@ -946,18 +946,19 @@ for i in range( N - 1 ):
     
     J_total = np.concatenate( (J_arm, J_base ), axis = 1)
     
-    controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.001  ) , twist)
+    controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.01  ) , twist)
     
     priorState = current_state.copy()
     current_state = nextState(current_state, controls) 
     
-    newJacobian, collision = checkCollisions( J_total, current_state  )  
-    
+    # newJacobian, collision = checkCollisions( J_total, current_state  )  
+    collision = False
+
     if (collision == True):
     #    print("Computing new")
         # Use the new Jacobian to calculate the new state 
         
-        controls = np.matmul( np.linalg.pinv( newJacobian, rcond = 0.001  ) , twist)
+        controls = np.matmul( np.linalg.pinv( newJacobian, rcond = 0.01  ) , twist)
 
         current_state = nextState( priorState, controls)
 
