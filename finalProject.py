@@ -903,7 +903,7 @@ for i in range( N - 1 ):
     J_total = np.concatenate( (J_arm, J_base ), axis = 1)
     
 
-    controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.01  ) , twist)
+    controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.001  ) , twist)
 
     current_state = nextState(current_state, controls) 
     
