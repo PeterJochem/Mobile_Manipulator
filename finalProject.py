@@ -1,10 +1,20 @@
 import modern_robotics as mr
 import math
 import numpy as np
+import matplotlib.pyplot as plt
 
 #############
 # Globals
 allStates = np.array([])
+
+allError_1 = np.array( []  )
+allError_2 = np.array( []  )
+allError_3 = np.array( []  )
+allError_4 = np.array( []  )
+allError_5 = np.array( []  )
+allError_6 = np.array( []  )
+
+updateCount = 0
 
 ############
 
@@ -543,14 +553,33 @@ current_state = np.zeros(12)
 #    allStates[i] = current_state
 
 
+def updateError(x_err):
+    x_err_copy = x_err.copy()
+    
+    global allError_1
+    global allError_2
+    global allError_3
+    global allError_4
+    global allError_5
+    global allError_6    
+
+    allError_1 = np.append(allError_1, x_err_copy[0] )
+    allError_2 = np.append(allError_2, x_err_copy[1] )
+    allError_3 = np.append(allError_3, x_err_copy[2] )
+    allError_4 = np.append(allError_4, x_err_copy[3] )
+    allError_5 = np.append(allError_5, x_err_copy[4] )
+    allError_6 = np.append(allError_6, x_err_copy[5] )
+    
+   
+
 runningError = 0
 
 # Milestone 3 
 def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     
     global runningError
-
-
+    global updateCount
+    
     # Use equation to calculate the twist
     result = np.matmul( mr.TransInv( X ), X_d )
     # print(result)
@@ -567,6 +596,12 @@ def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     X_err =  mr.MatrixLog6( np.matmul( mr.TransInv( X ), X_d ) ) 
     X_err = mr.se3ToVec( X_err )
     
+    if ( updateCount == 20):
+        updateError(X_err)
+        updateCount = 0
+    else:
+        updateCount = updateCount + 1
+
     runningError = runningError + (X_err * dt) 
     
     result = np.matmul(AdjointResult, v_d) + np.matmul( K_p, X_err ) + np.matmul( K_i, runningError ) 
@@ -590,8 +625,8 @@ dt = 0.01
 
 K_p = 3 * np.identity(6)
 
-K_i = np.zeros( (6 , 6) ) 
-# K_i = 20 *  np.identity(6)
+# K_i = np.zeros( (6 , 6) ) 
+K_i = 0.05 *  np.identity(6)
 
 twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
 
@@ -661,8 +696,8 @@ T_ce_standoff = np.array( [ [np.cos(angle), 0.0, np.sin(angle), 0.0],
                            [0.0, 0.0, 0.0, 1.0] ] ) 
 
 T_ce_grasp = T_ce_standoff.copy()
-T_ce_grasp[2][3] = 0.02
-T_ce_grasp[0][3] = 0.05
+T_ce_grasp[2][3] = 0.03
+T_ce_grasp[0][3] = 0.03
 
 k = 1
 
@@ -907,6 +942,8 @@ print( convertToMatrix( trajectory[0] )  )
 print("")
 print("")
 
+all_error = []
+
 # X = np.array( [  [], [], [], []    ]    )
 
 # N = 1
@@ -972,7 +1009,9 @@ for i in range( N - 1 ):
     # Convert X to the desired csv list 
     # Add the gripper state to this??
     allStates[i] = current_state   
+   
 
+    
     if ( grasp == True ):
         allStates[i][12] = 1.0
     else:
@@ -984,8 +1023,31 @@ np.savetxt("milestone3.csv", allStates, delimiter=",")
 
 
 
-    # Store every kth state returned from NextState 
-    # Store every kth X_err 
+# Store every kth X_err 
+# Plot the error
+
+plt.figure(1)
+
+plt.subplot(5,1,1)
+plt.title('Error Plot over states of end-effector')
+plt.xlabel('state')
+
+time = np.linspace(0, len(allError_1), len(allError_1) )
+
+# print(allError )
+
+
+# Plot each error vector
+plt.plot( time, allError_1, '.')
+plt.plot( time, allError_2, '.')
+plt.plot( time, allError_3, '.')
+plt.plot( time, allError_4, '.')
+plt.plot( time, allError_5, '.')
+plt.plot( time, allError_6, '.')
+
+
+
+plt.show()
 
 
 #########################################################
