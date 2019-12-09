@@ -1039,7 +1039,7 @@ time = np.linspace(0, len(allError_1), len(allError_1) )
 
 # Plot each error vector
 plt.plot( time, allError_1, '.')
-plt.plot( time, allError_2, '.')
+plt.plot( time, allError_2, '*')
 plt.plot( time, allError_3, '.')
 plt.plot( time, allError_4, '.')
 plt.plot( time, allError_5, '.')
