@@ -486,10 +486,15 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     current_gripper_state = segment_4[len(segment_4) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
 
-    # standoff_final = T_sc_final.copy()
+    standoff_final = T_sc_final.copy()
     # standoff_final = standoff_final.astype(float)
     # standoff_final[2][3] = standoff_final[2][3] + 0.5
-    segment_5 = createSegment5( current_gripper_state, T_ce_standoff, T_sc_final, k )
+    
+    #T_ce_standoff = T_sc_final.copy()
+    #T_ce_standoff[1][3] = 0.3
+
+    # 2 x 3 = T_se
+    segment_5 = createSegment5( current_gripper_state,  T_sc_final, T_ce_standoff, k )
     
 
     current_gripper_state = segment_5[len(segment_5) - 1]
@@ -498,6 +503,7 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     # Want to keep the orientation the same  
     # segment_6 = createSegment6( current_gripper_state, T_sc_final, k )
     standoff_state_final = current_gripper_state.copy()
+
     segment_6 = createSegment6( current_gripper_state, T_sc_final, T_ce_grasp, k )
     
     current_gripper_state = segment_6[len(segment_6) - 1]
@@ -621,12 +627,15 @@ dt = 0.01
 
 
 # 80, 50
+
 # K_p = np.zeros( (6 , 6) )
 
-K_p = 3 * np.identity(6)
+K_p = 65 * np.identity(6)
 
 # K_i = np.zeros( (6 , 6) ) 
-K_i = 0.05 *  np.identity(6)
+# K_i = 5 *  np.identity(6)
+K_i = 1 *  np.identity(6)
+
 
 twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
 
@@ -676,28 +685,17 @@ T_sc_final = np.array( [ [0, 1, 0, 0.0],
 
 
 
-angle = np.pi / 4.0
-T_ce_grasp = np.array( [ [1.0, 0.0, 0.0, 0.0],
-
-                           [ 0.0, np.cos(angle), -1 * np.sin(angle), 0.01],
-
-                           [0.0, np.sin(angle), np.cos(angle), 0.0  ],
-
-                           [0.0, 0.0, 0.0, 1.0  ]  ] )
-
-
-angle = np.pi / 2.0
-T_ce_standoff = np.array( [ [np.cos(angle), 0.0, np.sin(angle), 0.0],
+angle = np.pi / 2.0  
+T_ce_standoff = np.array( [ [np.cos(angle),          0.0,               np.sin(angle),                     0.01],
                            
-                           [0.0, 1.0, 0.0, 0.0],
+                           [0.0,                     1.0,               0.0,                              0.0],
                            
-                           [ -1 * np.sin(angle), np.cos(angle), 0.0, 0.3],
+                           [ -1 * np.sin(angle),     0.0,               np.cos(angle),                    0.2],
                            
-                           [0.0, 0.0, 0.0, 1.0] ] ) 
+                           [0.0,                      0.0,              0.0,                             1.0] ] ) 
 
 T_ce_grasp = T_ce_standoff.copy()
 T_ce_grasp[2][3] = 0.03
-T_ce_grasp[0][3] = 0.03
 
 k = 1
 
@@ -805,13 +803,19 @@ def checkCollisions( J1, currentState  ):
         returnValue = True
         newJ = createZeroColumn(newJ, 0)
 
-    #if( (currentState[4] < -1.0 ) or ( currentState[4] > 1.5 ) ):
+    # if( (currentState[4] < -1.0 ) or ( currentState[4] > 1.5 ) ):
     #    returnValue = True
     #    newJ = createZeroColumn(newJ, 1)        
 
     if( (currentState[5] < -1.5 ) or ( currentState[5] > -0.2 ) ):
         returnValue = True
         newJ = createZeroColumn(newJ, 2)        
+
+    relativeAngle = currentState[6] - currentState[5]
+    
+    if ( ( relativeAngle < -1.117 ) or ( relativeAngle > 1 ) ):
+        returnValue = True
+        newJ = createZeroColumn(newJ, 3)
 
     #if ( (currentState[6] < -1.117 ) or ( currentState[6] > -0.2 ) ):   
     #    returnValue = True
@@ -852,7 +856,7 @@ T_b0 = np.array( [  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.
 
 
 # This is the H matrix for the robot with mecanmum wheels
-r = 0.0475 * 1.5
+r = 0.0475  # / 1.5
 l = 0.47 / 2.0
 w = 0.30 / 2.0
 
@@ -959,7 +963,7 @@ for i in range( N - 1 ):
     X_d_next = convertToMatrix( trajectory[i + 1] )
 
     twist = FeedbackControl( X,  X_d, X_d_next, K_p, K_i, dt )
-        
+    
     F6 = F
     F6 = np.concatenate( ( (np.zeros( (2, 4) ) ), F6), axis = 0 )    
     F6 = np.concatenate( ( F6, (np.zeros( (1, 4) ) ) ), axis = 0 )
@@ -991,6 +995,7 @@ for i in range( N - 1 ):
     current_state = nextState(current_state, controls) 
     
     newJacobian, collision = checkCollisions( J_total, current_state  )  
+
     # collision = False
 
     if (collision == True):
