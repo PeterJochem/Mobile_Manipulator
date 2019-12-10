@@ -15,6 +15,7 @@ allError_5 = np.array( []  )
 allError_6 = np.array( []  )
 
 updateCount = 0
+runningError = 0
 
 ############
 
@@ -560,6 +561,8 @@ current_state = np.zeros(12)
 
 
 def updateError(x_err):
+
+    # Copy the error 
     x_err_copy = x_err.copy()
     
     global allError_1
@@ -568,7 +571,9 @@ def updateError(x_err):
     global allError_4
     global allError_5
     global allError_6    
-
+    
+    # Store each element of the current error into the right array
+    # We store it this way in order to plotting easier
     allError_1 = np.append(allError_1, x_err_copy[0] )
     allError_2 = np.append(allError_2, x_err_copy[1] )
     allError_3 = np.append(allError_3, x_err_copy[2] )
@@ -578,21 +583,21 @@ def updateError(x_err):
     
    
 
-runningError = 0
 
 # Milestone 3 
+# X is 
+# X_d is 
+# X_d_next is 
+# K_p is 
+# K_i is 
+# dt is 
 def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     
-    global runningError
-    global updateCount
+    global runningError  # This is the integral error over time (0, now)
+    global updateCount   # Describes if we should store the 
+                         # Current point on trajectory's error
     
-    # Use equation to calculate the twist
-    result = np.matmul( mr.TransInv( X ), X_d )
-    # print(result)
-    
-    # Is this the right adjoint? 
-    # Now apply the bracket operation? 
-    AdjointResult = mr.Adjoint( result ) 
+    AdjointResult = mr.Adjoint( np.matmul( mr.TransInv( X ), X_d ) ) 
     
 
     v_d = (1.0 / dt) * ( mr.MatrixLog6(  np.matmul( mr.TransInv( X_d ), X_d_next )  )  )
@@ -602,18 +607,18 @@ def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     X_err =  mr.MatrixLog6( np.matmul( mr.TransInv( X ), X_d ) ) 
     X_err = mr.se3ToVec( X_err )
     
+    # Store every kth error term
     if ( updateCount == 20):
         updateError(X_err)
         updateCount = 0
     else:
         updateCount = updateCount + 1
-
+    
+    # Increment our integral error term
     runningError = runningError + (X_err * dt) 
     
-    result = np.matmul(AdjointResult, v_d) + np.matmul( K_p, X_err ) + np.matmul( K_i, runningError ) 
+    return np.matmul(AdjointResult, v_d) + np.matmul( K_p, X_err ) + np.matmul( K_i, runningError ) 
         
-    # print("V is " + str(result) )
-    return result
 
 
 # Testing setup 
@@ -626,20 +631,15 @@ X_d_next = np.array(  [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0],  [1.0, 0.0,
 dt = 0.01
 
 
-# 80, 50
-
-# K_p = np.zeros( (6 , 6) )
-
 K_p = 65 * np.identity(6)
 
 # K_i = np.zeros( (6 , 6) ) 
-# K_i = 5 *  np.identity(6)
 K_i = 1 *  np.identity(6)
 
 
 twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
 
-J = np.array(  [   [0.030, 0.0, -0.005, 0.002, -0.024, 0.012],  [ -0.030, 0.0, 0.005, 0.002, 0.024, 0.012 ], [-0.030, 0.0, 0.005, 0.002, 0.0, 0.012 ], 
+J = np.array( [  [0.030, 0.0, -0.005, 0.002, -0.024, 0.012],  [ -0.030, 0.0, 0.005, 0.002, 0.024, 0.012 ], [-0.030, 0.0, 0.005, 0.002, 0.0, 0.012 ], 
     
     [ 0.030, 0.0, -0.005, 0.002, 0.0, 0.012], [-0.985, 0.0, 0.170, 0.0, 0.221, 0.0],  [0.0, -1.0, 0.0, -0.240, 0.0, -0.288 ],
     
@@ -651,13 +651,6 @@ J_pi = np.linalg.pinv( J, rcond = 0.001 )
 
 result = np.matmul( J_pi, twist )
 
-print("The twist is ")
-print(result)
-print("")
-
-print("")
-print("The controls vector is " + str(result) )
-
 
 ### End of testing setup 
 
@@ -665,11 +658,22 @@ print("The controls vector is " + str(result) )
 # Call TrajectoryGenerator 8 times and concatenate each segment
 
 # Set up the initial conditions
-T_se_initial = np.array( [ [1.0, 0, 0.0, 0.0],
-                           [0, 1.0, 0, 0.0],
-                           [0.0, 0, 1.0, 0.5],
-                           [0, 0, 0, 1.0] ] )
+T_se_initial = np.array( [ [0.0, 0.0, 1.0, 0.0],
+                           [0.0, 1.0, 0.0, 0.0],
+                           [-1.0, 0.0, 0.0, 0.5],
+                           [0.0, 0.0, 0.0, 1.0] ] )
 
+# Construct a rotation matrix to inject error into the intial system
+angle = np.pi / 6.0
+rot_z = np.array( [        [ np.cos(angle),          np.sin(angle),               0.0,     0.115],
+
+                           [-1 * np.sin(angle),      np.cos(angle),               0.0,        0.1],
+
+                           [ 0.0,                     0.0,                        1.0,        0.2],
+
+                           [0.0,                      0.0,                        0.0,        1.0] ] ) 
+
+T_se_initial = np.matmul(T_se_initial, rot_z)
 
 
 T_sc_initial = np.array( [ [1, 0, 0, 1.0],
@@ -686,7 +690,7 @@ T_sc_final = np.array( [ [0, 1, 0, 0.0],
 
 
 angle = np.pi / 2.0  
-T_ce_standoff = np.array( [ [np.cos(angle),          0.0,               np.sin(angle),                     0.01],
+T_ce_standoff = np.array( [ [np.cos(angle),          0.0,               np.sin(angle),                     0.015],
                            
                            [0.0,                     1.0,               0.0,                              0.0],
                            
@@ -699,7 +703,6 @@ T_ce_grasp[2][3] = 0.03
 
 k = 1
 
-# T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k
 allStates = TrajectoryGenerator(  T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
 
 
@@ -714,6 +717,7 @@ allStates = np.zeros( (N, 12)  )
 currentState = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   )
 controls = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, -1 * 10.0, 10.0, 10.0, -1 * 10.0]  )
 
+# This code implements the testing for the second milestone
 for i in range(N):
         
     
@@ -729,6 +733,7 @@ np.savetxt("milestone2.csv", allStates, delimiter=",")
 
 # Take a trajectory and construct the T_end_effector
 # input is r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
+# Output is the SE(3) representation of the end-effector
 def convertToMatrix( state ):
 
     myMatrix = np.zeros( (4, 4) )
@@ -765,6 +770,9 @@ def convertToMatrix( state ):
 # [3, 7] = arm configuration
 # [7, 11] = wheel configuration
 
+# This method takes in the current state of the system
+# and returns the SE(3) matrix representation of the 
+# current end effector in the space frame
 def construct_T_Sb(currentState):
         
     angle = currentState[0]
@@ -774,8 +782,6 @@ def construct_T_Sb(currentState):
 
     myArray = np.array( [  [np.cos(angle), np.sin(angle), 0.0, 0.0 ], [-1 * np.sin(angle), np.cos(angle), 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0 ], [x, y, z, 1.0]     ]  ).T
-
-
     
     return myArray
 
@@ -786,10 +792,11 @@ def createZeroColumn(jacobian, column):
     for i in range( len(jacobian)  ):
         myArray[i][column] = 0.0
 
-
     return myArray
-    
 
+
+# This method implements joint limits on the 
+# arm in orde to help prevent many collisions
 def checkCollisions( J1, currentState  ):
     
     # Joints are 3, 4, 5, 6, 7 of currentState
@@ -863,10 +870,6 @@ w = 0.30 / 2.0
 # Do I need to use the r/4 for H(0)?
 H_p_i = (r / 4.0) * np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T
 
-print("")
-print(H_p_i)
-print("")
-print("")
 
 F = H_p_i
 
@@ -875,17 +878,10 @@ F = H_p_i
 trajectory = TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
 
 
-# T_se_initial = np.array( [ [1.0, 0, 0.0, 0],
-#                           [0, 1.0, 0, 0],
-#                           [0.0, 0, 1.0, 0.5],
-#                           [0, 0, 0, 1] ] )
 
 X = T_se_initial
 
 
-#X_start = T_se_initial
-#X_end = X_start.copy()
-#X_end[0][3] = X_end[0][3] + 2.0
 
 # The total time in seconds
 #Tf = 10
@@ -915,13 +911,6 @@ dt = 0.01
 # X = convertToMatrix( trajectory[0] )  
 
 
-
-
-#print("")
-#print("X is ")
-#print(X)
-# print("")
-
 N = len(trajectory)
 # N = 4
 
@@ -932,25 +921,6 @@ allStates = np.zeros( (N, length) )
 J3 = 0.2
 J4 = -1.6
 current_state = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0   ]  )
-
-#print("")
-#print("F is ")
-#print(F)
-#print("")
-
-print("")
-print("The trajectory is ")
-print(trajectory[0] )
-print("")
-print( convertToMatrix( trajectory[0] )  )
-print("")
-print("")
-
-all_error = []
-
-# X = np.array( [  [], [], [], []    ]    )
-
-# N = 1
 
 for i in range( N - 1 ):
     
