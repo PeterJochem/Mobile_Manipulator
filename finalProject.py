@@ -4,9 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 #############
-# Globals
+# Global Variables
+# This is the array that will store each point on the 
+# desired trajectory
 allStates = np.array([])
 
+# There is an array for each part of the error vector
+# X_err is a 6-vector
 allError_1 = np.array( []  )
 allError_2 = np.array( []  )
 allError_3 = np.array( []  )
@@ -14,7 +18,11 @@ allError_4 = np.array( []  )
 allError_5 = np.array( []  )
 allError_6 = np.array( []  )
 
-updateCount = 0
+# This records how often to update the 
+# error data strucutres. Every kth point, record the error
+updateCount = 9
+
+# This is the integral error term
 runningError = 0
 
 ############
@@ -33,9 +41,14 @@ runningError = 0
 # controls 
 # [0, 4] = arm torques 
 # [5, 8] = wheel velocities
+
+
+##############
+
 def nextState(currentState, controls, speedLimit = 12.5):
 
     # Check for illegal control values
+    # If they are ilegal, enforce the speed limit
     for i in range(len(controls) ):
         
         negative = True
@@ -71,31 +84,19 @@ def nextState(currentState, controls, speedLimit = 12.5):
     l = 0.47 / 2.0
     w = 0.30 / 2.0
     
-    # Do I need to use (r / 4.0) ?
     H_p_i = (r / 4.0) * np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T 
         
     # wheel velocities are controls[5, 8]
-    # No transpose?
     wheel_velocities = np.array( [controls[5] , controls[6], controls[7], controls[8] ] ).T
 
     delta_theta = ( wheel_velocities ) * dt
     
-    # ?
     twist_b = ( ( np.matmul( H_p_i, delta_theta) ) )
     
-    # print("The twist is ")
-    # print( twist_b )
-    
-
-    # The twist is not 1 x 6
     w_b_z = twist_b[0]
     v_b_x = twist_b[1]
     v_b_y = twist_b[2]
 
-    # print("")
-    # print("v_b_x is ")
-    # print(v_b_x)
-    
     delta_q_b = None
 
     if ( abs(w_b_z) < 0.01 ):
@@ -107,13 +108,8 @@ def nextState(currentState, controls, speedLimit = 12.5):
         value2 = ( (v_b_y * np.sin(w_b_z) ) + (v_b_x * ( 1 - np.cos(w_b_z)  ) ) ) / w_b_z 
     
         delta_q_b = np.array( [ w_b_z, value1, value2 ]  ).T
-
-
-    # print("")
-    # print("delta_q_b is ")
-    # print(delta_q_b)
-
     
+
     # Transoform delta_q_b to the space frame 
     # Rotate by the chassis's angle
     angle = currentState[0]
@@ -121,26 +117,10 @@ def nextState(currentState, controls, speedLimit = 12.5):
 
     q_s = np.matmul( rotationMatrix, delta_q_b)
 
-    # print(" ")
-    # print("q_s is ")
-    # print(q_s)
-
     # Add the delta q to the old values
     new_state[0] = new_state[0] + q_s[0] 
     new_state[1] = new_state[1] + q_s[1]
-    # new_state is [theta, x, y ... ]
-    # q_s is [theta, x, y]
     new_state[2] = new_state[2] + q_s[2]
-    
-    # print("The angle value is " + str(new_state[0] ) )
-    # print("The x value is " + str(new_state[1] ) )
-    # print("The y value is " + str(new_state[2] ) )
-
-    # print("")
-    # print(q_s[1])
-
-    # print("The new state is ")
-    # print(new_state)
     
     return new_state
 
@@ -148,6 +128,7 @@ def nextState(currentState, controls, speedLimit = 12.5):
 # Take the 3-D array returned from mr library and 
 # turn it into a 2-D array
 # gripper is either 0 or 1. 0 means gripper closed. 1 means open/opening
+# This allows us to process the data for V-REP to use
 def process_array(myArray, gripper):
     
     length = len(myArray)
@@ -180,7 +161,8 @@ def process_array(myArray, gripper):
     
     return finalArray
 
-
+# This method creates the first segment that takes the end-effector 
+# from the start state to the stand-off state
 def createSegment1( T_se_initial, T_sc_initial, T_ce_standoff, k ):
     
 
@@ -224,7 +206,8 @@ def createSegment1( T_se_initial, T_sc_initial, T_ce_standoff, k ):
 
     return path_states
 
-# This segment will 
+# This segment will create second segment that takes 
+# the end-effector from the standoff state to the grapsing state 
 def createSegment2(T_se_initial, T_sc_initial, T_ce_grasp, k ):
 
     totalSeconds = 100
@@ -248,7 +231,9 @@ def createSegment2(T_se_initial, T_sc_initial, T_ce_grasp, k ):
     
     return path_states
 
-# Take the linear array and construct the SE3 representation 
+# Take the linear array and construct the SE3 representation
+# Input: the data in the format that V-REP desires
+# Return: the same data but in SE(3) form
 def convertLinearToSE3(linearList):
     
     finalList = np.zeros( (4, 4) ) 
@@ -282,8 +267,10 @@ def convertLinearToSE3(linearList):
 
 # Take the T_se and convert it to the format that 
 # the csv file wants
-# chassis phi, chassis x, chassis y, J1, J2, J3, J4, J5, W1, W2, W3, W4, gripper state
 # Input: currentState from nextState function
+# Returns: chassis phi, chassis x, chassis y, J1, J2, J3, 
+# J4, J5, W1, W2, W3, W4, gripper state
+# This reformatting lets us input the data to V-REP
 def convertSE3_List( array ):
 
     myList = np.zeros(13)
@@ -447,10 +434,10 @@ def createSegment8( current_state, goal_state, k  ):
 
 # This method will generate the trajectory
 # The initial configuration of the end-effector in the reference trajectory: Tse,initial.
-# The cube's initial configuration: Tsc,initial.
-# The cube's desired final configuration: Tsc,final.
-# The end-effector's configuration relative to the cube when it is grasping the cube: Tce,grasp.
-# The end-effector's standoff configuration above the cube, before and after grasping, relative to the cube: Tce,standoff.
+# The cube's initial configuration: T_sc_initial.
+# The cube's desired final configuration: T_sc_final.
+# The end-effector's configuration relative to the cube when it is grasping the cube: T_ce_grasp.
+# The end-effector's standoff configuration above the cube, before and after grasping, relative to the cube: T_ce_standoff.
 # The number of trajectory reference configurations per 0.01 seconds: k. The value k is an integer 
 # with a value of 1 or greater.
 def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k):
@@ -458,13 +445,12 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     # List of order of the path entries 
     # r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
     
+    # This is the overall list of all the states on the trajectory
     path_states = np.array([])
-
     
     # Create the first segment of the path
     segment_1 = createSegment1(T_se_initial, T_sc_initial, T_ce_standoff, k)
     
-
 
     current_gripper_state = segment_1[len(segment_1) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
@@ -479,7 +465,6 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     # This just fully closes the gripper
     segment_3 = createSegment3(current_gripper_state, k)
      
-    
     # current_gripper_state is the same after the prior step
     # Move the end-effector back to the standoff state
     segment_4 = createSegment4( current_gripper_state, standoff_state_initial, k )
@@ -491,13 +476,9 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     # standoff_final = standoff_final.astype(float)
     # standoff_final[2][3] = standoff_final[2][3] + 0.5
     
-    #T_ce_standoff = T_sc_final.copy()
-    #T_ce_standoff[1][3] = 0.3
-
-    # 2 x 3 = T_se
     segment_5 = createSegment5( current_gripper_state,  T_sc_final, T_ce_standoff, k )
     
-
+    
     current_gripper_state = segment_5[len(segment_5) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
     
@@ -534,7 +515,6 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
 
 
 # Milestone 1
-
 num_seconds = 3
 numEntries = num_seconds * 100 
 length = 12
@@ -545,24 +525,12 @@ allStates = np.zeros( (numEntries, length) )
 current_state = np.zeros(12) 
 
 
-#for i in range(0, 100 * num_seconds):
- 
-#    controls = np.zeros(9)
-#    controls[5] = 10
-#    controls[6] = 10
-#    controls[7] = 10
-#    controls[8] = 10
-
-#    current_state = nextState(current_state, controls)   
-#    print(current_state)
-
-    # Add the state to the allStates vector
-#    allStates[i] = current_state
-
-
+# This method updates data structures that we need 
+# in order to plot the error at the end of the program
+# x_err is the error vector at the current time
 def updateError(x_err):
 
-    # Copy the error 
+    # Copy the error vector 
     x_err_copy = x_err.copy()
     
     global allError_1
@@ -584,22 +552,24 @@ def updateError(x_err):
    
 
 
-# Milestone 3 
-# X is 
-# X_d is 
-# X_d_next is 
-# K_p is 
-# K_i is 
-# dt is 
+# X is the current, ACTUAL state on the trajectory 
+# X_d is the current DESIRED state on the trajectory
+# X_d_next is the desired next state on the trajectory
+# K_p is is the proportional gains matrix  
+# K_i is the intergral gains matrix 
+# dt is the timestep
+# The return value is the twist we should execute 
+# in order to guide the end-effector towards the desired path
 def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     
     global runningError  # This is the integral error over time (0, now)
     global updateCount   # Describes if we should store the 
                          # Current point on trajectory's error
-    
+   
+
+    # Compute the desired twist using Modern Robotics 13.4 and 13.5
     AdjointResult = mr.Adjoint( np.matmul( mr.TransInv( X ), X_d ) ) 
     
-
     v_d = (1.0 / dt) * ( mr.MatrixLog6(  np.matmul( mr.TransInv( X_d ), X_d_next )  )  )
     
     v_d = mr.se3ToVec( v_d )
