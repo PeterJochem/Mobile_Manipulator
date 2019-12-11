@@ -2,8 +2,18 @@ import modern_robotics as mr
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 import logging
 
+# Quick Guide to Modifying System
+# To adjust the Feedback controls
+# Go to lines 744 where I define the K_i and K_p matrices
+
+# To adjust the initial configuration: go to line 731
+# Here, I define the inital configurations of the robot and the cube
+
+# To run this file, from the command line run "python MobileManipulator.py"
+# I wrote this in Python 2.7
 
 #############
 # Global Variables
@@ -13,6 +23,10 @@ allStates = np.array([])
 
 # There is an array for each part of the error vector
 # X_err is a 6-vector
+# For example, allError_1 is all the errors over time
+# for the  first component of the overall vector
+# I stored it this way because it made plotting
+# and csv writing so much easier
 allError_1 = np.array( []  )
 allError_2 = np.array( []  )
 allError_3 = np.array( []  )
@@ -20,12 +34,18 @@ allError_4 = np.array( []  )
 allError_5 = np.array( []  )
 allError_6 = np.array( []  )
 
+# allError stores the error vectors in their original format
+allError = np.array( [] )
+
 # This records how often to update the 
 # error data strucutres. Every kth point, record the error
 updateCount = 2
 
 # This is the integral error term
 runningError = 0
+
+# This records if we are enforcing joint limits or not
+enforce_joint_limits = False
 
 ############
 
@@ -141,9 +161,12 @@ def nextState(currentState, controls, speedLimit = 12.5):
 
 
 # Take the 3-D array returned from mr library and 
-# turn it into a 2-D array
+# turn it into a 2-D array that can be written into a csv file for VREP
 # gripper is either 0 or 1. 0 means gripper closed. 1 means open/opening
 # This allows us to process the data for V-REP to use
+# myArray: a N, 4, 4 matrix of the N SE(3) matrices on the planned trajectory
+# gripper is either 0 or 1 and describes if the gripper should be opened of closed
+# 0 is closed, 1 is open
 def process_array(myArray, gripper):
     
     length = len(myArray)
@@ -151,7 +174,7 @@ def process_array(myArray, gripper):
     
     
     for i in range( length ):
-        # r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
+        
         finalArray[i][0] = myArray[i][0][0]
         finalArray[i][1] = myArray[i][0][1]
         finalArray[i][2] = myArray[i][0][2]
@@ -240,14 +263,14 @@ def createSegment2(T_se_initial, T_sc_initial, T_ce_grasp, k ):
     
     return path_states
 
-# Take the linear array and construct the SE3 representation
+# Take the linear array and construct the SE3 representation of the chassis
 # Input: the data in the format that V-REP desires
+# # r11, r12, r13, r21, r22, r23, r31, r32, r33, px, py, pz
 # Return: the same data but in SE(3) form
 def convertLinearToSE3(linearList):
     
     finalList = np.zeros( (4, 4) ) 
     
-    # r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
     finalList[0][0] = linearList[0]  
     finalList[0][1] = linearList[1]
     finalList[0][2] = linearList[2]
@@ -484,6 +507,7 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     # Create the first segment of the path
     segment_1 = createSegment1(T_se_initial, T_sc_initial, T_ce_standoff, k)
     
+    # Update the current state of the system so we can make the next segment
     current_gripper_state = segment_1[len(segment_1) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
      
@@ -492,6 +516,7 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     # Create the second segment
     segment_2 = createSegment2(current_gripper_state, T_sc_initial, T_ce_grasp, k) 
     
+    # Update the current state of the system so we can make the next segment
     current_gripper_state = segment_2[len(segment_2) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
    
@@ -502,33 +527,39 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     # Move the end-effector back to the standoff state
     segment_4 = createSegment4( current_gripper_state, standoff_state_initial, k )
     
+    # Update the current state of the system so we can make the next segment
     current_gripper_state = segment_4[len(segment_4) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
 
     standoff_final = T_sc_final.copy()
     
+    # create the fifth segment
     segment_5 = createSegment5( current_gripper_state,  T_sc_final, T_ce_standoff, k )
     
+    # Update the current state of the system so we can make the next segment
     current_gripper_state = segment_5[len(segment_5) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
     
-    # Want to keep the orientation the same  
-    # segment_6 = createSegment6( current_gripper_state, T_sc_final, k )
     standoff_state_final = current_gripper_state.copy()
-
+    
+    # Create the sixth segment
     segment_6 = createSegment6( current_gripper_state, T_sc_final, T_ce_grasp, k )
     
+    # Update the current state of the system so we can make the next segment
     current_gripper_state = segment_6[len(segment_6) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
-
+    
+    # Create the seventh segment
     segment_7 = createSegment7( current_gripper_state, current_gripper_state, k )
 
+    # Update the current state of the system so we can make the next segment
     current_gripper_state = segment_7[len(segment_7) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
+    
+    # Create the eight segment
     segment_8 = createSegment8( current_gripper_state, standoff_state_final, k )
 
     # Combine each segment so that we have the desired format for VREP
-    # path_states = segment_1
     path_states = np.concatenate( (segment_1, segment_2) )
     path_states = np.concatenate( (path_states, segment_3) )
     path_states = np.concatenate( (path_states, segment_4) )
@@ -553,7 +584,8 @@ def updateError(x_err):
     global allError_4
     global allError_5
     global allError_6    
-    
+    global allError
+
     # Store each element of the current error into the right array
     # We store it this way in order to plotting easier
     allError_1 = np.append(allError_1, x_err_copy[0] )
@@ -563,6 +595,7 @@ def updateError(x_err):
     allError_5 = np.append(allError_5, x_err_copy[4] )
     allError_6 = np.append(allError_6, x_err_copy[5] )
     
+    allError = np.append(allError, x_err) 
    
 
 
@@ -604,92 +637,9 @@ def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     return np.matmul(AdjointResult, v_d) + np.matmul( K_p, X_err ) + np.matmul( K_i, runningError ) 
         
 
-
-# Testing setup 
-X = np.array( [ [0.170, 0.0, -1 * 0.985, 0.0], [0.0, 1.0, 0.0, 0.0], [0.985, 0.0, 0.170, 0.0], [0.387, 0.0, 0.570, 1.0] ]   ).T
-
-X_d = np.array( [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.5, 0.0, 0.5, 1.0] ] ).T 
-
-X_d_next = np.array(  [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0],  [1.0, 0.0, 0.0, 0.0], [ 0.6, 0.0, 0.3, 1.0 ]  ]    ).T
-
-dt = 0.01
-
-# 65
-K_p = 65 * np.identity(6)
-
-# K_i = np.zeros( (6 , 6) ) 
-K_i = 1.0 *  np.identity(6)
-
-
-twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
-
-J = np.array( [  [0.030, 0.0, -0.005, 0.002, -0.024, 0.012],  [ -0.030, 0.0, 0.005, 0.002, 0.024, 0.012 ], [-0.030, 0.0, 0.005, 0.002, 0.0, 0.012 ], 
-    
-    [ 0.030, 0.0, -0.005, 0.002, 0.0, 0.012], [-0.985, 0.0, 0.170, 0.0, 0.221, 0.0],  [0.0, -1.0, 0.0, -0.240, 0.0, -0.288 ],
-    
-    [0.0, -1.0, 0.0, -0.214, 0.0, -0.135 ], [ 0.0, -1.0, 0.0, -0.218, 0.0, 0.0 ], [ 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 ]  ] ).T
-
-
-
-J_pi = np.linalg.pinv( J, rcond = 0.001 ) 
-
-result = np.matmul( J_pi, twist )
-
-
-### End of testing setup 
-
-# Set up the initial conditions
-T_se_initial = np.array( [ [0.0, 0.0, 1.0, 0.2038],
-                           [0.0, 1.0, 0.0, -0.0348],
-                           [-1.0, 0.0, 0.0, 0.5],
-                           [0.0, 0.0, 0.0, 1.0] ] )
-
-# Construct a rotation matrix to inject error into the intial system
-angle = np.pi / 6.0
-rot_z = np.array( [        [ np.cos(angle),          np.sin(angle),               0.0,     0.115],
-
-                           [-1 * np.sin(angle),      np.cos(angle),               0.0,        0.1],
-
-                           [ 0.0,                     0.0,                        1.0,        0.2],
-
-                           [0.0,                      0.0,                        0.0,        1.0] ] ) 
-
-T_se_initial = np.matmul(T_se_initial, rot_z)
-
-
-T_sc_initial = np.array( [ [1, 0, 0, 1.0],
-                           [0, 1, 0, 0.0],
-                           [0, 0, 1, 0.0],
-                           [0, 0, 0, 1.0] ] )
-
-
-T_sc_final = np.array( [ [0, 1, 0, 0.0],
-                         [-1, 0, 0, -1.0],
-                         [0, 0, 1, 0.0],
-                         [0, 0, 0, 1.0] ] )
-
-
-
-angle = np.pi / 2.0  
-T_ce_standoff = np.array( [ [np.cos(angle),          0.0,               np.sin(angle),                     0.015],
-                           
-                           [0.0,                     1.0,               0.0,                              0.0],
-                           
-                           [ -1 * np.sin(angle),     0.0,               np.cos(angle),                    0.2],
-                           
-                           [0.0,                      0.0,              0.0,                             1.0] ] ) 
-
-T_ce_grasp = T_ce_standoff.copy()
-T_ce_grasp[2][3] = 0.03
-
-k = 1
-
-allStates = TrajectoryGenerator(  T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
-
-N = 100
-
-# Take a trajectory and construct the T_end_effector
-# input is r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
+# Take in an array called state that is in the csv format 
+# and convert it to the SE(3) representation of the chassis
+# input is r11, r12, r13, r21, r22, r23, r31, r32, r33, px, py, pz
 # Output is the SE(3) representation of the end-effector
 def convertToMatrix( state ):
 
@@ -722,14 +672,13 @@ def convertToMatrix( state ):
     return myMatrix
 
 
-# # currentState
-# [0, 2] = (x, y, theta)
-# [3, 7] = arm configuration
-# [7, 11] = wheel configuration
-
 # This method takes in the current state of the system
 # and returns the SE(3) matrix representation of the 
 # current end effector in the space frame
+# currentState: 
+# [0, 2] = (theta, x, y)
+# [3, 7] = arm configuration
+# [8, 11] = wheel configuration
 def construct_T_Sb(currentState):
         
     angle = currentState[0]
@@ -744,6 +693,8 @@ def construct_T_Sb(currentState):
 
 # This method takes a jacobian matrix and a column index 
 # and makes all the entries in the column zero
+# Jacobian is the jacobian matrix 
+# column is the column number we want to make all of it zero
 def createZeroColumn(jacobian, column):
     
     myArray = jacobian.copy()
@@ -756,6 +707,12 @@ def createZeroColumn(jacobian, column):
 
 # This method implements joint limits on the 
 # arm in orde to help prevent many collisions
+# J1 is the original Jacobian
+# currentState is the current configuration of the 
+# currentState
+# [0, 2] = (theta, x, y)
+# [3, 7] = arm configuration
+# [8, 11] = wheel configuration  
 def checkCollisions( J1, currentState  ):
     
     # Joints are 3, 4, 5, 6, 7 of currentState
@@ -795,10 +752,93 @@ def checkCollisions( J1, currentState  ):
     return newJ, returnValue
 
 
-############### Put it all together #####################
+############### MAIN #####################
+# Execution flow begins here
 
-logging.basicConfig(filename = 'myLogFile2.log', filemode = 'w', level=logging.DEBUG, format = '%(name)s - %(levelname)s - %(message)s')
+# Initial Conditions setup 
+logging.basicConfig(filename = 'logFile.log', filemode = 'w', level = logging.DEBUG, format = '%(name)s - %(levelname)s - %(message)s')
+
+logging.info('In order to run this program: python MobileManipulator.py')
 logging.info('Setting up Initial Conditions')
+
+X = np.array( [ [0.170, 0.0, -1 * 0.985, 0.0], [0.0, 1.0, 0.0, 0.0], [0.985, 0.0, 0.170, 0.0], [0.387, 0.0, 0.570, 1.0] ]   ).T
+X_d = np.array( [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.5, 0.0, 0.5, 1.0] ] ).T
+X_d_next = np.array(  [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0],  [1.0, 0.0, 0.0, 0.0], [ 0.6, 0.0, 0.3, 1.0 ]  ]    ).T
+
+logging.info('X initially is ' + str(X) )
+logging.info('X_d initially is ' + str(X_d) )
+logging.info('X_d_next initially is ' + str(X_d_next) )
+
+
+dt = 0.01
+
+K_p = 5.0 * np.identity(6)
+# K_i = np.zeros( (6 , 6) ) 
+K_i = 1.5 *  np.identity(6)
+
+logging.info("K_p is " + str(K_p) )
+logging.info("K_i is " + str(K_i) )
+
+twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
+J = np.array( [  [0.030, 0.0, -0.005, 0.002, -0.024, 0.012],  [ -0.030, 0.0, 0.005, 0.002, 0.024, 0.012 ], [-0.030, 0.0, 0.005, 0.002, 0.0, 0.012 ],
+
+    [ 0.030, 0.0, -0.005, 0.002, 0.0, 0.012], [-0.985, 0.0, 0.170, 0.0, 0.221, 0.0],  [0.0, -1.0, 0.0, -0.240, 0.0, -0.288 ],
+
+    [0.0, -1.0, 0.0, -0.214, 0.0, -0.135 ], [ 0.0, -1.0, 0.0, -0.218, 0.0, 0.0 ], [ 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 ]  ] ).T
+
+J_pi = np.linalg.pinv( J, rcond = 0.001 )
+result = np.matmul( J_pi, twist )
+
+# Set up the initial conditions
+T_se_initial = np.array( [ [0.0, 0.0, 1.0, 0.2038],
+                           [0.0, 1.0, 0.0, -0.0348],
+                           [-1.0, 0.0, 0.0, 0.5],
+                           [0.0, 0.0, 0.0, 1.0] ] )
+
+# Construct a rotation matrix to inject error into the intial system
+angle = np.pi / 6.0
+rot_z = np.array( [        [ np.cos(angle),          np.sin(angle),               0.0,     0.115],
+
+                           [-1 * np.sin(angle),      np.cos(angle),               0.0,        0.1],
+
+                           [ 0.0,                     0.0,                        1.0,        0.2],
+
+                           [0.0,                      0.0,                        0.0,        1.0] ] )
+
+T_se_initial = np.matmul(T_se_initial, rot_z)
+T_sc_initial = np.array( [ [1, 0, 0, 1.0],
+                           [0, 1, 0, 0.0],
+                           [0, 0, 1, 0.0],
+                           [0, 0, 0, 1.0] ] )
+
+T_sc_final = np.array( [ [0, 1, 0, 0.0],
+                         [-1, 0, 0, -1.0],
+                         [0, 0, 1, 0.0],
+                         [0, 0, 0, 1.0] ] )
+angle = np.pi / 2.0
+T_ce_standoff = np.array( [ [np.cos(angle),          0.0,               np.sin(angle),                     0.015],
+
+                           [0.0,                     1.0,               0.0,                              0.0],
+
+                           [ -1 * np.sin(angle),     0.0,               np.cos(angle),                    0.2],
+
+                           [0.0,                      0.0,              0.0,                             1.0] ] )
+
+# the grapsing position is the same as standoff but the y-axis coordinate is lower
+T_ce_grasp = T_ce_standoff.copy()
+T_ce_grasp[2][3] = 0.03
+
+k = 1
+allStates = TrajectoryGenerator(  T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
+N = 100
+
+# Log the initial conditions 
+logging.info("T_se_initial is " + str(T_se_initial) )
+logging.info("T_sc_initial is " + str(T_sc_initial) )
+logging.info("T_sc_final is " + str(T_sc_final) )
+logging.info("T_ce_grasp is " + str(T_ce_grasp) )
+logging.info("T_ce_standoff is " + str(T_ce_standoff) )
+
 
 # Define the home configuration
 M_home = np.array( [  [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0 ], [ 0.033, 0.0, 0.6546, 1.0] ] ).T
@@ -832,6 +872,14 @@ H_p_i = (r / 4.0) * np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], 
 F = H_p_i
 
 # Generate the refrence trajectory
+enforce_joint_limits = True
+try:
+    if ( sys.argv[1] == 'no_limits' ):
+        enforce_joint_limits = False
+except:
+    enforce_joint_limits = True
+
+
 logging.info('Generating the Trajectory')
 trajectory = TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
 
@@ -845,6 +893,8 @@ dt = 0.01
 # chassis phi, chassis x, chassis y, J1, J2, J3, J4, J5, W1, W2, W3, W4, gripper state
 # X = convertToMatrix( trajectory[0] )  
 
+# Initialize the globals variables that we will use to store data that 
+# we will later send to VREP
 length = 13
 allStates = np.zeros( (N, length) )
 
@@ -865,9 +915,12 @@ for i in range( N - 1 ):
 
     X_d = convertToMatrix( trajectory[i] )
     X_d_next = convertToMatrix( trajectory[i + 1] )
-
+    
+    # Compute the twist we will need to follow to get to
+    # our desired state from our current state
     twist = FeedbackControl( X,  X_d, X_d_next, K_p, K_i, dt )
     
+    # Use the equations from 13.4 and 13.5 to compute the Jacobian
     F6 = F
     F6 = np.concatenate( ( (np.zeros( (2, 4) ) ), F6), axis = 0 )    
     F6 = np.concatenate( ( F6, (np.zeros( (1, 4) ) ) ), axis = 0 )
@@ -884,9 +937,11 @@ for i in range( N - 1 ):
     
     # Combine the two Jacobians into one 
     J_total = np.concatenate( (J_arm, J_base ), axis = 1)
-     
+    
+    # Use the pseudo-inverse of the total Jacobian to compute the controls vector
     controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.01  ) , twist)
     
+    # Store in case the given controls vector results in a collision
     priorState = current_state.copy()
     
     # Get the state of the system after following the given controls vector
@@ -895,21 +950,21 @@ for i in range( N - 1 ):
     
     newJacobian, collision = checkCollisions( J_total, current_state  )  
     
-    # For testing, set to false
-    # collision = False
-        
+    
     # If the computed controls vector will result in a collisison,
     # then enforce joint limits and recompute the controls vector
-    if (collision == True):
-        # Use the new Jacobian to calculate the new state 
-        
+    if ( ( collision == True ) and ( enforce_joint_limits == True ) ):
+
+        # Use the new Jacobian to calculate the new state     
         controls = np.matmul( np.linalg.pinv( newJacobian, rcond = 0.01  ) , twist)
 
         current_state = nextState( priorState, controls)
 
-    
+    # Construct the SE(3) representation of our end effector's
+    # current state in the space frame
     T_sb = construct_T_Sb( current_state ) 
     
+    # This is the configuration we actually end up at
     X = np.matmul(  T_sb  , np.matmul(T_b0 , T_0e) )
     
     
@@ -926,20 +981,20 @@ for i in range( N - 1 ):
 
 
 # Save the csv file
-np.savetxt("milestone3.csv", allStates, delimiter=",")
+np.savetxt("VREP.csv", allStates, delimiter=",")
 
 
 # Plot the error
-
 logging.info('Plotting the Error')
 plt.figure(1)
 
 plt.subplot(1, 1, 1)
 plt.title('Error Plot Over States of End-Effector')
-plt.xlabel('state')
+plt.ylabel('Magnitude')
+plt.xlabel('State Along Trajectory')
 
+# This is our x-axis in the plot
 time = np.linspace(0, len(allError_1), len(allError_1) )
-
 
 # Plot each error vector
 plt.plot( time, allError_1, '.')
@@ -957,10 +1012,10 @@ plt.plot(time, allError_5, "-o", label = "Err_V_y")
 plt.plot(time, allError_6, "-w", label = "Err_V_z")
 
 plt.legend(loc="upper left")
-
-
 plt.show()
 
+# Write the error vector to the csv file
+np.savetxt("x_err.csv", allError, delimiter=",")
 
 #########################################################
 
