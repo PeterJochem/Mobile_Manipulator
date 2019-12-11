@@ -592,7 +592,7 @@ def FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt ):
     X_err = mr.se3ToVec( X_err )
     
     # Store every kth error term
-    if ( updateCount == 20):
+    if ( updateCount == 2):
         updateError(X_err)
         updateCount = 0
     else:
@@ -614,11 +614,11 @@ X_d_next = np.array(  [ [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0],  [1.0, 0.0,
 
 dt = 0.01
 
-
+# 65
 K_p = 65 * np.identity(6)
 
 # K_i = np.zeros( (6 , 6) ) 
-K_i = 1 *  np.identity(6)
+K_i = 1.0 *  np.identity(6)
 
 
 twist = FeedbackControl( X, X_d, X_d_next, K_p, K_i, dt )
@@ -822,7 +822,7 @@ blist = np.array( [b1, b2, b3, b4, b5]  ).T
 T_b0 = np.array( [  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.1662, 0.0, 0.0026, 1.0] ] ).T
 
 # This is the H matrix for the robot with mecanmum wheels
-r = 0.0475  # / 1.5
+r = 0.0475 # / * 1.5
 l = 0.47 / 2.0
 w = 0.30 / 2.0
 
@@ -934,7 +934,7 @@ np.savetxt("milestone3.csv", allStates, delimiter=",")
 logging.info('Plotting the Error')
 plt.figure(1)
 
-plt.subplot(5, 1, 1)
+plt.subplot(1, 1, 1)
 plt.title('Error Plot Over States of End-Effector')
 plt.xlabel('state')
 
@@ -948,6 +948,17 @@ plt.plot( time, allError_3, '.')
 plt.plot( time, allError_4, '.')
 plt.plot( time, allError_5, '.')
 plt.plot( time, allError_6, '.')
+
+plt.plot(time, allError_1, "-b", label = "Err_W_1")
+plt.plot(time, allError_2, "-r", label = "Err_W_2")
+plt.plot(time, allError_3, "-p", label = "Err_W_3")
+plt.plot(time, allError_4, "-y", label = "Err_V_x")
+plt.plot(time, allError_5, "-o", label = "Err_V_y")
+plt.plot(time, allError_6, "-w", label = "Err_V_z")
+
+plt.legend(loc="upper left")
+
+
 plt.show()
 
 
