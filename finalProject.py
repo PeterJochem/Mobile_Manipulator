@@ -2,6 +2,8 @@ import modern_robotics as mr
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import logging
+
 
 #############
 # Global Variables
@@ -20,13 +22,14 @@ allError_6 = np.array( []  )
 
 # This records how often to update the 
 # error data strucutres. Every kth point, record the error
-updateCount = 9
+updateCount = 2
 
 # This is the integral error term
 runningError = 0
 
 ############
 
+# This is just a friendly reminder of the order in which I put the arrays
 # Input: 12 vector of current state 
 # 3 variables for the chassis configuration, 5 variables for the arm 
 # configuration, and 4 variables for the wheel angles
@@ -45,6 +48,16 @@ runningError = 0
 
 ##############
 
+# This method takes the current state on the actual trajectory
+# and has the controls vector execute. We return the state after 
+# dt has passed as we apply the given controls vector
+# Input
+# currentState is current state on the actual trajectory 
+# controls is controls vector the controls wants to execute
+# speedLimit is an optional parameter. It enforces a speed 
+# limit on each joint. If the controller requests 
+# speed above it, then the real speed is the limited one
+# Return: the given state of the system after dt 
 def nextState(currentState, controls, speedLimit = 12.5):
 
     # Check for illegal control values
@@ -84,6 +97,8 @@ def nextState(currentState, controls, speedLimit = 12.5):
     l = 0.47 / 2.0
     w = 0.30 / 2.0
     
+    # This matrix is described in 13.4
+    # It relates how a control vector moves the mecanum wheel base
     H_p_i = (r / 4.0) * np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T 
         
     # wheel velocities are controls[5, 8]
@@ -163,69 +178,63 @@ def process_array(myArray, gripper):
 
 # This method creates the first segment that takes the end-effector 
 # from the start state to the stand-off state
+# T_se_initial is the configuration of the end effector in the space frame
+# T_sc_final is the cube's initial configuration in the space frame 
+# T_ce_standoff is the end effector's orientation relative to the 
+# cube at standoff 
+# Return the segment of the trajectory in array ready for csv writing
 def createSegment1( T_se_initial, T_sc_initial, T_ce_standoff, k ):
     
-
     # Need to compute the desired orientation R
-    # R_se_at standoff = R_sc * R_ce
-    # Can I multiply the SE(3) matrices too?
-    # T_se_standoff = np.matmul(  T_ce_standoff.copy(), T_sc_initial.copy()) 
     T_se_standoff = np.matmul(T_sc_initial.copy(), T_ce_standoff.copy() )
     
-    #T_se_standoff = T_ce_standoff
-    # replace the offset 
-    #T_se_standoff[0][3] = T_sc_initial[0][3]
-    #T_se_standoff[1][3] = T_sc_initial[1][3]
-    #T_se_standoff[2][3] = T_sc_initial[1][3] + 0.5
-
     totalSeconds = 100
     N = float(totalSeconds) / float(k)
 
     X_start = T_se_initial.copy()
 
     X_end = T_se_standoff.copy()
-    # print(X_end)
-    # X_end = T_sc_initial.copy()
-    # Add a few cms to the z coordinate 
     
     X_end = X_end.astype(float)
-    # X_end[2][3] = X_end[2][3] + 0.5
-    
 
     # The total time in seconds
     Tf = totalSeconds
-    # method describes cubic or quintic scaling
+    
+    # Method describes cubic or quintic scaling
     method = 5
-    # For testing, just compute the first segment
+   
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+    
     # Take the 3-D array and put it into a 2-D form
     path_states = process_array(path_states, 0)
     
-    # print(path_states)
-    # print(X_end)
-
     return path_states
 
 # This segment will create second segment that takes 
 # the end-effector from the standoff state to the grapsing state 
+# T_se_initial is the configuration of the end effector in the space frame
+# T_sc_final is the cube's initial configuration in the space frame 
+# T_ce_grasp is the end-effector's orientation relative to the 
+# cube when it is being grasped
+# Return the segment of the trajectory in array ready for csv writing
 def createSegment2(T_se_initial, T_sc_initial, T_ce_grasp, k ):
 
     totalSeconds = 100
     N = float(totalSeconds) / float(k)
     
-    # T_ce_grasp_new = np.matmul(  T_ce_grasp.copy(), T_sc_initial.copy())
     T_goal = np.matmul( T_sc_initial.copy(), T_ce_grasp.copy() )
 
     X_start = T_se_initial.copy()
 
     X_end = T_goal.copy()
 
-    # The total time in seconds
     Tf = totalSeconds
-    # method describes cubic or quintic scaling
+
+    # Method describes cubic or quintic scaling 
     method = 5
-    # For testing, just compute the first segment
+    
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
+    
     # Take the 3-D array and put it into a 2-D form
     path_states = process_array(path_states, 0)
     
@@ -262,7 +271,6 @@ def convertLinearToSE3(linearList):
     finalList[3][2] = 0
     finalList[3][3] = 1
 
-
     return finalList
 
 # Take the T_se and convert it to the format that 
@@ -292,7 +300,9 @@ def convertSE3_List( array ):
     return myList
 
 
-# This method closes the gripper
+# This method creates a path which only closes the gripper
+# current_state is the end effector's configuration in the space frame
+# while we are closing the gripper
 def createSegment3( current_state, k ):
     
     totalSeconds = 100
@@ -304,17 +314,21 @@ def createSegment3( current_state, k ):
 
     # The total time in seconds
     Tf = totalSeconds
-    # method describes cubic or quintic scaling
+
+    # Method describes cubic or quintic scaling
     method = 5
-    # For testing, just compute the first segment
+    
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
    
-   # Take the 3-D array and put it into a 2-D form
+    # Take the 3-D array and put it into a 2-D form
     path_states = process_array(path_states, 1)
 
     return path_states
 
-# Moves the robot from grasping the block to 
+# Moves the robot from grasping the block back to the INITIAL standoff state 
+#  current state is the T_se as the block is being grasped
+# stanoff state is the end effector's state in the space frame at standoff
+# Return the trajectory segment in the desired format so we can write it to VREP
 def createSegment4( current_state, standoff_state, k ):
         
     totalSeconds = 100
@@ -326,9 +340,10 @@ def createSegment4( current_state, standoff_state, k ):
 
     # The total time in seconds
     Tf = totalSeconds
-    # method describes cubic or quintic scaling
+    
+    # Method describes cubic or quintic scaling
     method = 5
-    # For testing, just compute the first segment
+    
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
 
     # Take the 3-D array and put it into a 2-D form
@@ -336,6 +351,12 @@ def createSegment4( current_state, standoff_state, k ):
     
     return path_states
 
+# This generates a path from the initial standoff state 
+# to the final standoff state.
+# current state is the T_se as the block is being grasped
+# stanoff state is the end effector's state in the space frame at standoff
+# T_sc_final is the cube's final, desired location in the space frame
+# Return the trajectory segment in the desired format so we can write it to VREP
 def createSegment5(  current_state, standoff_state, T_sc_final, k):
 
     #  current_gripper_state, T_ce_standoff, T_sc_final, k )
@@ -350,9 +371,10 @@ def createSegment5(  current_state, standoff_state, T_sc_final, k):
 
     # The total time in seconds
     Tf = totalSeconds
-    # method describes cubic or quintic scaling
+
+    # Method describes cubic or quintic scaling
     method = 5
-    # For testing, just compute the first segment
+    
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
 
     # Take the 3-D array and put it into a 2-D form
@@ -360,11 +382,15 @@ def createSegment5(  current_state, standoff_state, T_sc_final, k):
 
     return path_states
 
+# This method creates a path from the final standoff state to the 
+# the grasping state
+# current state is the T_se as the block is being grasped
+# T_sc_final is the cube's final, desired location in the space frame
+# T_ce_grasp is the end effector's configuration as we grasp it
+# Return the trajectory segment in the desired format so we can write it to VREP
 def createSegment6( current_state, T_sc_final, T_ce_grasp, k ):
 
-    # createSegment6( current_gripper_state, T_sc_final, T_ce_grasp, k )
     goal_state = np.matmul( T_sc_final, T_ce_grasp )
-
 
     totalSeconds = 200
     N = float(totalSeconds) / float(k)
@@ -375,9 +401,10 @@ def createSegment6( current_state, T_sc_final, T_ce_grasp, k ):
 
     # The total time in seconds
     Tf = totalSeconds
-    # method describes cubic or quintic scaling
+
+    # Method describes cubic or quintic scaling
     method = 5
-    # For testing, just compute the first segment
+    
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
 
     # Take the 3-D array and put it into a 2-D form
@@ -385,6 +412,10 @@ def createSegment6( current_state, T_sc_final, T_ce_grasp, k ):
 
     return path_states
 
+# This segment simply releases the gripper
+# currentState is the end effector's configuration in the space frame as 
+# we release the cube. goal_state is the same configuration as currentState
+# Return the trajectory segment in the desired format so we can write it to VREP
 def createSegment7( current_state, goal_state, k ):
     
     totalSeconds = 100
@@ -396,9 +427,10 @@ def createSegment7( current_state, goal_state, k ):
 
     # The total time in seconds
     Tf = totalSeconds
+
     # method describes cubic or quintic scaling
     method = 5
-    # For testing, just compute the first segment
+    
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
 
     # Take the 3-D array and put it into a 2-D form
@@ -408,6 +440,8 @@ def createSegment7( current_state, goal_state, k ):
 
 # Move the end-effector from putting the block down
 # back to the standoff state
+# current_state is end effector's configuration in the space frame
+# goal state is the final standoff state 
 def createSegment8( current_state, goal_state, k  ):
     
     totalSeconds = 100
@@ -419,17 +453,16 @@ def createSegment8( current_state, goal_state, k  ):
 
     # The total time in seconds
     Tf = totalSeconds
-    # method describes cubic or quintic scaling
+    
+    # Method describes cubic or quintic scaling
     method = 5
-    # For testing, just compute the first segment
+    
     path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
 
     # Take the 3-D array and put it into a 2-D form
     path_states = process_array(path_states, 0)
 
     return path_states
-
-
 
 
 # This method will generate the trajectory
@@ -451,9 +484,9 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     # Create the first segment of the path
     segment_1 = createSegment1(T_se_initial, T_sc_initial, T_ce_standoff, k)
     
-
     current_gripper_state = segment_1[len(segment_1) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
+     
     standoff_state_initial = current_gripper_state.copy()  
 
     # Create the second segment
@@ -473,11 +506,8 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
 
     standoff_final = T_sc_final.copy()
-    # standoff_final = standoff_final.astype(float)
-    # standoff_final[2][3] = standoff_final[2][3] + 0.5
     
     segment_5 = createSegment5( current_gripper_state,  T_sc_final, T_ce_standoff, k )
-    
     
     current_gripper_state = segment_5[len(segment_5) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
@@ -493,13 +523,11 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
 
     segment_7 = createSegment7( current_gripper_state, current_gripper_state, k )
 
-
     current_gripper_state = segment_7[len(segment_7) - 1]
     current_gripper_state =  convertLinearToSE3(current_gripper_state)
     segment_8 = createSegment8( current_gripper_state, standoff_state_final, k )
 
-
-    # Combine each segment
+    # Combine each segment so that we have the desired format for VREP
     # path_states = segment_1
     path_states = np.concatenate( (segment_1, segment_2) )
     path_states = np.concatenate( (path_states, segment_3) )
@@ -509,21 +537,7 @@ def TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_c
     path_states = np.concatenate( (path_states, segment_7) )
     path_states = np.concatenate( (path_states, segment_8) )
 
-
     return path_states
-
-
-
-# Milestone 1
-num_seconds = 3
-numEntries = num_seconds * 100 
-length = 12
-
-# Set up the current state
-allStates = np.zeros( (numEntries, length) )
-
-current_state = np.zeros(12) 
-
 
 # This method updates data structures that we need 
 # in order to plot the error at the end of the program
@@ -624,12 +638,9 @@ result = np.matmul( J_pi, twist )
 
 ### End of testing setup 
 
-# Milestone 2
-# Call TrajectoryGenerator 8 times and concatenate each segment
-
 # Set up the initial conditions
-T_se_initial = np.array( [ [0.0, 0.0, 1.0, 0.0],
-                           [0.0, 1.0, 0.0, 0.0],
+T_se_initial = np.array( [ [0.0, 0.0, 1.0, 0.2038],
+                           [0.0, 1.0, 0.0, -0.0348],
                            [-1.0, 0.0, 0.0, 0.5],
                            [0.0, 0.0, 0.0, 1.0] ] )
 
@@ -675,31 +686,7 @@ k = 1
 
 allStates = TrajectoryGenerator(  T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
 
-
-# Save the csv file 
-np.savetxt("milestone1.csv", allStates, delimiter=",")
-
-
 N = 100
-
-# Should be 13? one for gripper? 
-allStates = np.zeros( (N, 12)  )  
-currentState = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   )
-controls = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, -1 * 10.0, 10.0, 10.0, -1 * 10.0]  )
-
-# This code implements the testing for the second milestone
-for i in range(N):
-        
-    
-    # allStates = np.concatenate( (allStates, currentState) )
-    # CSV wants phi angle, x, y, joints, wheels
-    allStates[i] = currentState
-    
-    currentState = nextState(currentState, controls)
-    
-# Save the file for the second milestone
-np.savetxt("milestone2.csv", allStates, delimiter=",")
-
 
 # Take a trajectory and construct the T_end_effector
 # input is r11,r12,r13,r21,r22,r23,r31,r32,r33,px,py,pz
@@ -755,6 +742,8 @@ def construct_T_Sb(currentState):
     
     return myArray
 
+# This method takes a jacobian matrix and a column index 
+# and makes all the entries in the column zero
 def createZeroColumn(jacobian, column):
     
     myArray = jacobian.copy()
@@ -808,6 +797,9 @@ def checkCollisions( J1, currentState  ):
 
 ############### Put it all together #####################
 
+logging.basicConfig(filename = 'myLogFile2.log', filemode = 'w', level=logging.DEBUG, format = '%(name)s - %(levelname)s - %(message)s')
+logging.info('Setting up Initial Conditions')
+
 # Define the home configuration
 M_home = np.array( [  [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0 ], [ 0.033, 0.0, 0.6546, 1.0] ] ).T
 
@@ -823,14 +815,11 @@ b4 = np.array( [ 0.0, -1.0, 0.0, -0.2176, 0.0, 0.0 ] )
     
 b5 = np.array( [ 0.0, 0.0, 1.0, 0.0, 0.0, 0.0 ] )
 
-# REMEBER TO TRANSPOSE THIS
 blist = np.array( [b1, b2, b3, b4, b5]  ).T
-# REMEMBER TO TRANSPOSE THIS
 
 # This describes where the base of the arm is in the chassis's frame
 # This is fixed as dthe chassis and the arm are rigidly attatched
 T_b0 = np.array( [  [ 1.0, 0.0, 0.0, 0.0 ],  [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],  [0.1662, 0.0, 0.0026, 1.0] ] ).T
-
 
 # This is the H matrix for the robot with mecanmum wheels
 r = 0.0475  # / 1.5
@@ -840,58 +829,33 @@ w = 0.30 / 2.0
 # Do I need to use the r/4 for H(0)?
 H_p_i = (r / 4.0) * np.array( [ [ -1 / (l + w), 1, -1 ], [ 1 / (l + w), 1, 1 ], [ 1 / (l + w), 1, -1], [ -1 / (l + w), 1, 1] ] ).T
 
-
 F = H_p_i
 
 # Generate the refrence trajectory
-# T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k 
+logging.info('Generating the Trajectory')
 trajectory = TrajectoryGenerator( T_se_initial, T_sc_initial, T_sc_final, T_ce_grasp, T_ce_standoff, k )
-
-
 
 X = T_se_initial
 
-
-
-# The total time in seconds
-#Tf = 10
-#N = 100
-# method describes cubic or quintic scaling
-#method = 5
-# For testing, just compute the first segment
-#path_states = mr.CartesianTrajectory(X_start, X_end, Tf, N, method)
-# Take the 3-D array and put it into a 2-D form
-#path_states = process_array(path_states, 0)
-
-
-# trajectory = path_states 
-
-# Test it by giving it a short and simple trajectory to follow
-
 N = len(trajectory)
-
-# Define K_p
-# Define K_i
 
 dt = 0.01
 
 # Initialize the system
 # chassis phi, chassis x, chassis y, J1, J2, J3, J4, J5, W1, W2, W3, W4, gripper state
-# Is this how I initialize this?
 # X = convertToMatrix( trajectory[0] )  
-
-
-N = len(trajectory)
-# N = 4
 
 length = 13
 allStates = np.zeros( (N, length) )
 
 # Initial conditions
-J3 = 0.2
-J4 = -1.6
+# J3 = 0.2
+# J4 = -1.6
 current_state = np.array( [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0   ]  )
 
+logging.info('Running the Feedback controller')
+
+# Run the controller 
 for i in range( N - 1 ):
     
     if ( trajectory[i][12] == 1):
@@ -908,38 +872,35 @@ for i in range( N - 1 ):
     F6 = np.concatenate( ( (np.zeros( (2, 4) ) ), F6), axis = 0 )    
     F6 = np.concatenate( ( F6, (np.zeros( (1, 4) ) ) ), axis = 0 )
     
-    # print("")
-    # print("F is ")
-    # print(F)
-    # print("")
-
     arm_theta = np.array( [ current_state[3], current_state[4], current_state[5], current_state[6], current_state[7] ]  )
     
     T_0e = mr.FKinBody(M_home, blist, arm_theta )
-    
-     
+         
     intermediate1 = np.matmul( mr.TransInv( T_0e ) , mr.TransInv( T_b0  ) )  
 
     J_base = np.matmul( ( mr.Adjoint( intermediate1 )  ) , F6 )
     
-    # JacobianBody(Blist, thetalist)
-    # thetaList would be just the thetalist of the arm
     J_arm = mr.JacobianBody( blist, arm_theta )
     
-    
+    # Combine the two Jacobians into one 
     J_total = np.concatenate( (J_arm, J_base ), axis = 1)
-    
+     
     controls = np.matmul( np.linalg.pinv( J_total, rcond = 0.01  ) , twist)
     
     priorState = current_state.copy()
+    
+    # Get the state of the system after following the given controls vector
+    # over a time period dt
     current_state = nextState(current_state, controls) 
     
     newJacobian, collision = checkCollisions( J_total, current_state  )  
-
+    
+    # For testing, set to false
     # collision = False
-
+        
+    # If the computed controls vector will result in a collisison,
+    # then enforce joint limits and recompute the controls vector
     if (collision == True):
-    #    print("Computing new")
         # Use the new Jacobian to calculate the new state 
         
         controls = np.matmul( np.linalg.pinv( newJacobian, rcond = 0.01  ) , twist)
@@ -951,12 +912,13 @@ for i in range( N - 1 ):
     
     X = np.matmul(  T_sb  , np.matmul(T_b0 , T_0e) )
     
-    # Convert X to the desired csv list 
-    # Add the gripper state to this??
+    
+    # Add the actual point in trajectory space we end up at 
+    # so that we can send it to VREP later
     allStates[i] = current_state   
    
 
-    
+    # Append the grasp variable to the array in the csv file      
     if ( grasp == True ):
         allStates[i][12] = 1.0
     else:
@@ -967,19 +929,16 @@ for i in range( N - 1 ):
 np.savetxt("milestone3.csv", allStates, delimiter=",")
 
 
-
-# Store every kth X_err 
 # Plot the error
 
+logging.info('Plotting the Error')
 plt.figure(1)
 
-plt.subplot(5,1,1)
-plt.title('Error Plot over states of end-effector')
+plt.subplot(5, 1, 1)
+plt.title('Error Plot Over States of End-Effector')
 plt.xlabel('state')
 
 time = np.linspace(0, len(allError_1), len(allError_1) )
-
-# print(allError )
 
 
 # Plot each error vector
@@ -989,9 +948,6 @@ plt.plot( time, allError_3, '.')
 plt.plot( time, allError_4, '.')
 plt.plot( time, allError_5, '.')
 plt.plot( time, allError_6, '.')
-
-
-
 plt.show()
 
 
