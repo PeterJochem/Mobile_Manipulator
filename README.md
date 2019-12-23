@@ -1,4 +1,5 @@
-# How To Run My Code: install VREP, the Modern Robotics library, and clone my repo
+# How To Run My Code 
+Install VREP, the Modern Robotics library, and clone my repo
 
 Run ```Python3 MobileManipulator.py``` and this will generate a csv file that can be loaded in VREP
 
