@@ -1,7 +1,7 @@
 # How To Run My Code 
 Install VREP, the Modern Robotics library, and clone my repo
 
-Run ```Python3 MobileManipulator.py``` and this will generate a csv file that can be loaded in VREP
+Run ```python3 MobileManipulator.py``` and this will generate a csv file that can be loaded in VREP
 
 # Results
 ![Robot in Action]( https://github.com/PeterJochem/Mobile_Manipulator/blob/jointLimits/Kuka_In_Action.png ).
